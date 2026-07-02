@@ -1,0 +1,53 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+node_modules
+dist
+dist-ssr
+*.local
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+.vercel
+
+# Secrets
+.env.local
+.env
+
+# Scripts auxiliares de diagnóstico e deploy
+check_*.cjs
+test_*.cjs
+read_*.cjs
+search_*.cjs
+fetch_*.cjs
+recreate_*.cjs
+inspect_*.cjs
+migrate_*.cjs
+fix_*.cjs
+deploy_*.cjs
+install_*.cjs
+run_vps.cjs
+force_up.cjs
+restart_evo.cjs
+redeploy_waha.cjs
+restore_v2.cjs
+enable_ssl.cjs
+dump_roles.cjs
+add_swap.cjs
+stop_waha.js
+get_logs.cjs
