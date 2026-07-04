@@ -15,6 +15,7 @@ const INITIAL_COLUMNS = [
 const COLORS = ['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#14B8A6'];
 
 import SuperAdminPanel from './SuperAdminPanel';
+import SuperAdminKanban from './SuperAdminKanban';
 
 export default function App({ session }) {
   const [columns, setColumns] = useState(INITIAL_COLUMNS);
@@ -555,7 +556,8 @@ export default function App({ session }) {
       clean = '55' + clean;
     }
     
-    const res = await fetch(`/evolution/message/sendText/${companyId}`, {
+    const instanceName = userRole === 'superadmin' ? 'superadmin' : companyId;
+    const res = await fetch(`/evolution/message/sendText/${instanceName}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'apikey': '123' },
       body: JSON.stringify({ number: clean, text })
@@ -858,39 +860,7 @@ export default function App({ session }) {
             </div>
           )}
 
-          {userRole === 'superadmin' && allCompanies.length > 0 && (
-            <div className="bg-yellow-50 border border-yellow-200 p-1.5 rounded-lg flex items-center shadow-sm">
-              <span className="text-[11px] text-yellow-700 font-bold ml-2 mr-2 uppercase">👑 Empresa:</span>
-              <select
-                value={superAdminCompanyId}
-                onChange={async (e) => {
-                  const selId = e.target.value;
-                  setSuperAdminCompanyId(selId);
-                  setCompanyId(selId || null);
-                  if (selId) {
-                    const { data: compData } = await supabase.from('companies').select('invite_code, subscription_status, trial_ends_at, phone, message_templates').eq('id', selId).single();
-                    if (compData) {
-                      setSubscriptionStatus(compData.subscription_status);
-                      setTrialEndsAt(compData.trial_ends_at);
-                      setCompanyPhone(compData.phone || '');
-                      if (compData.message_templates && Object.keys(compData.message_templates).length > 0) {
-                        setMessageTemplates(prev => ({ ...prev, ...compData.message_templates }));
-                      }
-                    }
-                    await fetchLeads('superadmin', 'all', selId, customTitles);
-                  } else {
-                    setColumns(JSON.parse(JSON.stringify(INITIAL_COLUMNS)));
-                  }
-                }}
-                className="bg-white border-none rounded text-sm p-1.5 font-semibold text-slate-700 focus:ring-2 focus:ring-yellow-400 cursor-pointer shadow-sm max-w-[180px] truncate"
-              >
-                <option value="">-- Selecione --</option>
-                {allCompanies.map(c => (
-                  <option key={c.id} value={c.id}>{c.name}</option>
-                ))}
-              </select>
-            </div>
-          )}
+          {/* SuperAdmin: sem seletor de empresa — tem Kanban próprio */}
 
           <div className="bg-slate-100 p-1 rounded-lg flex flex-wrap gap-1">
             <button 
@@ -1046,7 +1016,11 @@ export default function App({ session }) {
         </div>
       )}
 
-      {currentView === 'kanban' && (
+      {currentView === 'kanban' && userRole === 'superadmin' && (
+        <SuperAdminKanban session={session} />
+      )}
+
+      {currentView === 'kanban' && userRole !== 'superadmin' && (
         <>
           <div className="mb-6 flex flex-col md:flex-row gap-4">
             <div className="bg-white p-4 rounded-lg shadow-sm shadow-indigo-900/5 border border-slate-100 w-full md:w-64">
