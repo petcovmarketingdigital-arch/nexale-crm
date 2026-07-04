@@ -1,3 +1,10 @@
 {
-  "name": "representacoes-crm"
+  "name": "nexale-crm",
+  "rewrites": [
+    {
+      "source": "/evolution/:path*",
+      "destination": "http://187.77.243.166:8080/:path*"
+    }
+  ]
 }
+
