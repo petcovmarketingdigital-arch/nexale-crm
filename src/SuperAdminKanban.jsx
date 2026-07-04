@@ -24,6 +24,16 @@ const STATUS_COLORS = {
   'canceled': 'bg-red-100 text-red-600',
 };
 
+const SA_DEFAULT_TEMPLATES = {
+  leads: 'Olá {{nome}}! 👋 Vi que você se cadastrou para conhecer o Nexale CRM. Como podemos te ajudar hoje?',
+  contato: 'Olá {{nome}}! 👋 Estamos entrando em contato referente à sua assinatura do Nexale CRM. Como podemos te ajudar?',
+  amostra: 'Olá {{nome}}! 😊 Gostaríamos de apresentar os recursos do Nexale CRM em uma rápida demonstração. Que dia fica melhor pra você?',
+  proposta: 'Olá {{nome}}! 📋 Acabei de te enviar a nossa proposta para assinatura do Nexale CRM. Qualquer dúvida estou por aqui!',
+  negociacao: 'Olá {{nome}}! 🤝 Podemos negociar uma condição especial para fecharmos o seu plano do Nexale CRM?',
+  ganhou: 'Olá {{nome}}! 🎉 Muito obrigado pela confiança! Sua assinatura do Nexale CRM está ativa e pronta para uso.',
+  perdido: 'Olá {{nome}}! 😔 Sentimos muito pelo cancelamento. Se puder nos contar o motivo, nos ajuda a melhorar.'
+};
+
 export default function SuperAdminKanban({ session }) {
   const EVOLUTION_INSTANCE = 'superadmin';
 
@@ -49,6 +59,16 @@ export default function SuperAdminKanban({ session }) {
   const [sendingWa, setSendingWa] = useState(false);
   const [waMsg, setWaMsg] = useState('');
   const [waConnected, setWaConnected] = useState(false);
+  
+  // Custom templates
+  const [showTemplatesModal, setShowTemplatesModal] = useState(false);
+  const [messageTemplates, setMessageTemplates] = useState(() => {
+    try {
+      const saved = localStorage.getItem('sa_kanban_templates');
+      if (saved) return JSON.parse(saved);
+    } catch (_) {}
+    return SA_DEFAULT_TEMPLATES;
+  });
 
   useEffect(() => {
     fetchCompanies();
@@ -126,11 +146,13 @@ export default function SuperAdminKanban({ session }) {
 
     // WhatsApp automático ao mover (apenas se tiver telefone)
     if (card.telefone) {
-      const toCol = columns.find(c => c.id === toColId);
-      const msg = `Olá, ${card.empresa}! 👋 Estamos entrando em contato referente à sua assinatura Nexale CRM. Como podemos te ajudar?`;
-      try {
-        await sendWa(card.telefone, msg);
-      } catch (e) { console.warn('Falha ao enviar WA ao mover card:', e.message); }
+      const template = messageTemplates[toColId];
+      if (template && template.trim() !== '') {
+        const msg = template.replace(/\{\{nome\}\}/gi, card.empresa);
+        try {
+          await sendWa(card.telefone, msg);
+        } catch (e) { console.warn('Falha ao enviar WA ao mover card:', e.message); }
+      }
     }
   };
 
@@ -201,6 +223,13 @@ export default function SuperAdminKanban({ session }) {
           <p className="text-xs text-slate-500 mt-0.5">Gerencie o relacionamento com seus assinantes</p>
         </div>
         <div className="flex items-center gap-3">
+          <button
+            onClick={() => setShowTemplatesModal(true)}
+            className="px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-xs font-bold rounded-lg border border-emerald-200 transition-colors flex items-center gap-1"
+            title="Configurar Mensagens Automáticas"
+          >
+            ⚙️ Mensagens
+          </button>
           <div className={`flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-full ${waConnected ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-500'}`}>
             <span className={`w-2 h-2 rounded-full ${waConnected ? 'bg-green-500' : 'bg-slate-400'}`} />
             {waConnected ? 'WhatsApp Conectado' : 'WhatsApp Desconectado'}
@@ -369,6 +398,50 @@ export default function SuperAdminKanban({ session }) {
                   💾 Salvar
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      {/* Modal de Configurar Mensagens */}
+      {showTemplatesModal && (
+        <div className="fixed inset-0 bg-slate-900/60 flex items-center justify-center p-4 z-50 backdrop-blur-sm" onClick={e => e.target === e.currentTarget && setShowTemplatesModal(false)}>
+          <div className="bg-white rounded-2xl w-full max-w-2xl shadow-2xl overflow-y-auto max-h-[90vh] p-6">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-4 mb-4">
+              <h3 className="text-lg font-black text-slate-800">⚙️ Configurar Mensagens Automáticas</h3>
+              <button onClick={() => setShowTemplatesModal(false)} className="text-slate-400 hover:text-slate-600 w-8 h-8 flex items-center justify-center rounded-full hover:bg-slate-100">✕</button>
+            </div>
+            <p className="text-xs text-slate-500 mb-4">
+              Personalize a mensagem enviada quando você move um assinante para cada coluna. Use <b>{"{{nome}}"}</b> para inserir o nome da empresa.
+            </p>
+            <div className="space-y-4">
+              {columns.map(col => (
+                <div key={col.id}>
+                  <label className="text-xs font-bold text-slate-600 block mb-1">{col.title}</label>
+                  <textarea
+                    value={messageTemplates[col.id] || ''}
+                    onChange={e => {
+                      const updated = { ...messageTemplates, [col.id]: e.target.value };
+                      setMessageTemplates(updated);
+                      localStorage.setItem('sa_kanban_templates', JSON.stringify(updated));
+                    }}
+                    placeholder={`Mensagem ao mover para ${col.title}...`}
+                    rows={2}
+                    className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 resize-none"
+                  />
+                </div>
+              ))}
+            </div>
+            <div className="flex justify-end gap-2 mt-6 pt-4 border-t border-slate-100">
+              <button onClick={() => {
+                if (window.confirm('Deseja restaurar as mensagens originais padrão?')) {
+                  setMessageTemplates(SA_DEFAULT_TEMPLATES);
+                  localStorage.setItem('sa_kanban_templates', JSON.stringify(SA_DEFAULT_TEMPLATES));
+                }
+              }} className="px-4 py-2 border border-slate-200 text-slate-600 text-xs font-bold rounded-lg hover:bg-slate-50 transition-colors">
+                Restaurar Padrão
+              </button>
+              <button onClick={() => setShowTemplatesModal(false)} className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-lg transition-colors">
+                Pronto / Salvar
+              </button>
             </div>
           </div>
         </div>
