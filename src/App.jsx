@@ -117,8 +117,8 @@ export default function App({ session }) {
 
     if (role === 'superadmin') {
       setCurrentView('superadmin');
-      // Carrega lista de empresas para o seletor do superadmin
-      const { data: companiesData } = await supabase.from('companies').select('id, name').order('name', { ascending: true });
+      // Carrega lista de empresas para o seletor do superadmin e campanhas
+      const { data: companiesData } = await supabase.from('companies').select('id, name, phone, subscription_status, sa_stage, sa_temperatura, sa_valor').order('name', { ascending: true });
       if (companiesData) setAllCompanies(companiesData);
     }
 
@@ -456,8 +456,9 @@ export default function App({ session }) {
 
   // Check Evolution API connection status
   useEffect(() => {
-    if (currentView === 'whatsapp' && companyId) {
-      fetch(`/evolution/instance/connectionState/${companyId}`, {
+    const activeInstance = userRole === 'superadmin' ? 'superadmin' : companyId;
+    if (currentView === 'whatsapp' && activeInstance) {
+      fetch(`/evolution/instance/connectionState/${activeInstance}`, {
         headers: { 'apikey': '123' }
       })
       .then(res => res.json())
@@ -467,13 +468,13 @@ export default function App({ session }) {
           setWaUser('Conectado');
           
           // Configura o Webhook silenciosamente
-          fetch(`/evolution/webhook/set/${companyId}`, {
+          fetch(`/evolution/webhook/set/${activeInstance}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'apikey': '123' },
             body: JSON.stringify({
               webhook: {
                 enabled: true,
-                url: `http://187.77.243.166:3001/webhook/${companyId}`,
+                url: `http://187.77.243.166:3001/webhook/${activeInstance}`,
                 byEvents: false,
                 base64: false,
                 events: ["MESSAGES_UPSERT"]
@@ -487,17 +488,18 @@ export default function App({ session }) {
       })
       .catch(console.error);
     }
-  }, [currentView, companyId]);
+  }, [currentView, companyId, userRole]);
 
   const handleGenerateQR = async () => {
     setIsGeneratingQR(true);
     setQrCodeImage(null);
+    const activeInstance = userRole === 'superadmin' ? 'superadmin' : companyId;
     try {
       // 1. Criar a instância no Evolution API
       const createRes = await fetch('/evolution/instance/create', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'apikey': '123' },
-        body: JSON.stringify({ instanceName: companyId, qrcode: true, integration: 'WHATSAPP-BAILEYS' })
+        body: JSON.stringify({ instanceName: activeInstance, qrcode: true, integration: 'WHATSAPP-BAILEYS' })
       });
       
       const createData = await createRes.json();
@@ -507,7 +509,7 @@ export default function App({ session }) {
         base64Image = createData.qrcode.base64;
       } else {
         // Se a instância já existir, vamos pedir para conectar
-        const connectRes = await fetch(`/evolution/instance/connect/${companyId}`, {
+        const connectRes = await fetch(`/evolution/instance/connect/${activeInstance}`, {
           headers: { 'apikey': '123' }
         });
         const connectData = await connectRes.json();
@@ -532,7 +534,8 @@ export default function App({ session }) {
 
   const checkSession = async () => {
     try {
-      const st = await fetch(`/evolution/instance/connectionState/${companyId}`, { headers: { 'apikey': '123' } });
+      const activeInstance = userRole === 'superadmin' ? 'superadmin' : companyId;
+      const st = await fetch(`/evolution/instance/connectionState/${activeInstance}`, { headers: { 'apikey': '123' } });
       if (st.ok) {
         const data = await st.json();
         setIsWahaConnected(data.instance?.state === 'open');
@@ -1219,7 +1222,16 @@ export default function App({ session }) {
       {/* 🚀 TELA DE CAMPANHA */}
       {currentView === 'campanha' && (() => {
         // Filtrar leads do CRM conforme filtros
-        const allLeads = columns.flatMap(col => col.cards.map(c => ({ ...c, coluna: col.id })));
+        const saLeads = allCompanies.map(c => ({
+          id: c.id,
+          empresa: c.name,
+          contato: c.name,
+          telefone: c.phone || '',
+          temperatura: c.sa_temperatura || 'Frio',
+          coluna: c.sa_stage || 'leads',
+          valor: c.sa_valor || 0
+        }));
+        const allLeads = userRole === 'superadmin' ? saLeads : columns.flatMap(col => col.cards.map(c => ({ ...c, coluna: col.id })));
         const filteredLeads = allLeads.filter(l => {
           if (campFilter.coluna !== 'all' && l.coluna !== campFilter.coluna) return false;
           if (campFilter.temperatura !== 'all' && l.temperatura !== campFilter.temperatura) return false;
@@ -1609,7 +1621,8 @@ export default function App({ session }) {
                   onClick={async () => {
                     if (window.confirm('Tem certeza que deseja desconectar o seu WhatsApp? Você terá que ler o QR Code novamente.')) {
                       try {
-                        await fetch(`/evolution/instance/logout/${companyId}`, {
+                        const activeInstance = userRole === 'superadmin' ? 'superadmin' : companyId;
+                        await fetch(`/evolution/instance/logout/${activeInstance}`, {
                           method: 'DELETE',
                           headers: { 'apikey': '123' }
                         });
