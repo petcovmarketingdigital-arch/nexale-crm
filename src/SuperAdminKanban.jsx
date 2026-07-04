@@ -124,8 +124,8 @@ export default function SuperAdminKanban({ session }) {
     // Persist
     await supabase.from('companies').update({ sa_stage: toColId }).eq('id', card.id);
 
-    // WhatsApp automático ao mover (apenas se conectado)
-    if (waConnected && card.telefone) {
+    // WhatsApp automático ao mover (apenas se tiver telefone)
+    if (card.telefone) {
       const toCol = columns.find(c => c.id === toColId);
       const msg = `Olá, ${card.empresa}! 👋 Estamos entrando em contato referente à sua assinatura Nexale CRM. Como podemos te ajudar?`;
       try {
