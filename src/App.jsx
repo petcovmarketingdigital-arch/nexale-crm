@@ -46,6 +46,8 @@ export default function App({ session }) {
   // SuperAdmin: lista e empresa selecionada
   const [allCompanies, setAllCompanies] = useState([]);
   const [superAdminCompanyId, setSuperAdminCompanyId] = useState('');
+  
+  const [selectedOrigem, setSelectedOrigem] = useState('all');
 
   const [leadNotes, setLeadNotes] = useState([]);
   const [newNote, setNewNote] = useState('');
@@ -195,6 +197,7 @@ export default function App({ session }) {
           dataCriacao: new Date(dbLead.data_criacao).toLocaleDateString('pt-BR'),
           dataRetorno: dbLead.data_retorno,
           data_movimentacao: dbLead.data_movimentacao || dbLead.data_criacao,
+          origem: dbLead.origem || 'Novo Lead'
         };
         const targetCol = cols.find(c => c.id === dbLead.coluna_id) || cols[0];
         targetCol.cards.push(lead);
@@ -343,7 +346,8 @@ export default function App({ session }) {
             status_amostra: formData.temperatura,
             coluna_id: 'leads',
             data_retorno: formData.dataRetorno || null,
-            notas: formData.notas
+            notas: formData.notas,
+            origem: 'Novo Lead'
           }]).select();
           
           if (error) throw error;
@@ -363,7 +367,8 @@ export default function App({ session }) {
               dataCriacao: new Date(dbLead.data_criacao).toLocaleDateString('pt-BR'),
               dataRetorno: dbLead.data_retorno,
               notas: dbLead.notas,
-              data_movimentacao: dbLead.data_movimentacao
+              data_movimentacao: dbLead.data_movimentacao,
+              origem: dbLead.origem || 'Novo Lead'
             };
             setColumns(columns.map(col => {
               if (col.id === 'leads') {
@@ -463,7 +468,8 @@ export default function App({ session }) {
           kits: 0,
           valor: 0,
           status_amostra: 'Frio',
-          coluna_id: 'leads'
+          coluna_id: 'leads',
+          origem: 'Captação B2B'
         });
         
         await new Promise(r => setTimeout(r, 300));
@@ -902,6 +908,20 @@ export default function App({ session }) {
             </div>
           )}
 
+          <div className="bg-indigo-50 border border-indigo-100 p-1.5 rounded-lg flex items-center shadow-sm shadow-indigo-900/5">
+            <span className="text-[11px] text-indigo-700 font-bold ml-2 mr-2 uppercase">Origem:</span>
+            <select
+              value={selectedOrigem}
+              onChange={(e) => setSelectedOrigem(e.target.value)}
+              className="bg-white border-none rounded text-sm p-1.5 font-semibold text-slate-700 focus:ring-2 focus:ring-indigo-500 cursor-pointer shadow-sm shadow-indigo-900/5 max-w-[150px] truncate"
+            >
+              <option value="all">Todas as Origens</option>
+              <option value="Novo Lead">Novo Lead</option>
+              <option value="Captação B2B">Captação B2B</option>
+              <option value="Link de WhatsApp">Link de WhatsApp</option>
+            </select>
+          </div>
+
           {/* SuperAdmin: sem seletor de empresa — tem Kanban próprio */}
 
           <div className="bg-slate-100 p-1 rounded-lg flex flex-wrap gap-1">
@@ -1135,11 +1155,14 @@ export default function App({ session }) {
                 
                 <div className="space-y-3 overflow-y-auto flex-1 custom-scrollbar pr-1">
                   {column.cards
-                    .filter(card => 
-                      card.empresa.toLowerCase().includes(searchTerm.toLowerCase()) || 
-                      card.contato.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                      card.telefone.toLowerCase().includes(searchTerm.toLowerCase())
-                    )
+                    .filter(card => {
+                      const matchSearch = 
+                        card.empresa.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                        card.contato.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                        card.telefone.toLowerCase().includes(searchTerm.toLowerCase());
+                      const matchOrigem = selectedOrigem === 'all' || (card.origem || 'Novo Lead') === selectedOrigem;
+                      return matchSearch && matchOrigem;
+                    })
                     .map((card) => {
                       const isAtrasado = card.dataRetorno && new Date(card.dataRetorno) < new Date();
                       // 🔥 Contador de dias parado na coluna
@@ -1155,13 +1178,22 @@ export default function App({ session }) {
                           onDragStart={(e) => handleDragStart(e, card, column.id)}
                         >
                           <div className="flex justify-between items-start mb-3">
-                            <span className={`text-[10px] font-bold uppercase px-2 py-1 rounded-md ${
-                              card.tipo === 'Cliente Final' ? 'bg-orange-100 text-orange-700' :
-                              card.tipo === 'Revenda' ? 'bg-purple-100 text-purple-700' :
-                              'bg-teal-100 text-teal-700'
-                            }`}>
-                              {card.tipo}
-                            </span>
+                            <div className="flex gap-1.5 flex-wrap">
+                              <span className={`text-[10px] font-bold uppercase px-2 py-1 rounded-md ${
+                                card.tipo === 'Cliente Final' ? 'bg-orange-100 text-orange-700' :
+                                card.tipo === 'Revenda' ? 'bg-purple-100 text-purple-700' :
+                                'bg-teal-100 text-teal-700'
+                              }`}>
+                                {card.tipo}
+                              </span>
+                              <span className={`text-[10px] font-bold uppercase px-2 py-1 rounded-md ${
+                                card.origem === 'Captação B2B' ? 'bg-indigo-100 text-indigo-700' :
+                                card.origem === 'Link de WhatsApp' ? 'bg-emerald-100 text-emerald-700' :
+                                'bg-slate-100 text-slate-700'
+                              }`}>
+                                {card.origem || 'Novo Lead'}
+                              </span>
+                            </div>
                             <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                               <button onClick={() => handleEditClick(card)} className="text-slate-400 hover:text-indigo-500 p-1 bg-slate-50 rounded" title="Editar lead">
                                 <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>

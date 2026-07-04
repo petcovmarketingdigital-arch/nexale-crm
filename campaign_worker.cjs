@@ -270,7 +270,8 @@ app.post('/webhook/:companyId', async (req, res) => {
         coluna_id: 'leads',
         metragem: 'Captado automaticamente pelo WhatsApp',
         valor: 0,
-        kits: 0
+        kits: 0,
+        origem: 'Link de WhatsApp'
       }]).select('id');
 
       if (insertErr) {
