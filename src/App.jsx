@@ -42,6 +42,9 @@ export default function App({ session }) {
   const [selectedSeller, setSelectedSeller] = useState('all');
   const [subscriptionStatus, setSubscriptionStatus] = useState('active');
   const [trialEndsAt, setTrialEndsAt] = useState(null);
+  // SuperAdmin: lista e empresa selecionada
+  const [allCompanies, setAllCompanies] = useState([]);
+  const [superAdminCompanyId, setSuperAdminCompanyId] = useState('');
 
   const [leadNotes, setLeadNotes] = useState([]);
   const [newNote, setNewNote] = useState('');
@@ -113,6 +116,9 @@ export default function App({ session }) {
 
     if (role === 'superadmin') {
       setCurrentView('superadmin');
+      // Carrega lista de empresas para o seletor do superadmin
+      const { data: companiesData } = await supabase.from('companies').select('id, name').order('name', { ascending: true });
+      if (companiesData) setAllCompanies(companiesData);
     }
 
     let loadedCustomTitles = {};
@@ -847,6 +853,40 @@ export default function App({ session }) {
                 <option value="all">Toda a Equipe</option>
                 {teamMembers.map(m => (
                   <option key={m.id} value={m.id}>{m.email} {m.id === session.user.id ? '(Você)' : ''}</option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          {userRole === 'superadmin' && allCompanies.length > 0 && (
+            <div className="bg-yellow-50 border border-yellow-200 p-1.5 rounded-lg flex items-center shadow-sm">
+              <span className="text-[11px] text-yellow-700 font-bold ml-2 mr-2 uppercase">👑 Empresa:</span>
+              <select
+                value={superAdminCompanyId}
+                onChange={async (e) => {
+                  const selId = e.target.value;
+                  setSuperAdminCompanyId(selId);
+                  setCompanyId(selId || null);
+                  if (selId) {
+                    const { data: compData } = await supabase.from('companies').select('invite_code, subscription_status, trial_ends_at, phone, message_templates').eq('id', selId).single();
+                    if (compData) {
+                      setSubscriptionStatus(compData.subscription_status);
+                      setTrialEndsAt(compData.trial_ends_at);
+                      setCompanyPhone(compData.phone || '');
+                      if (compData.message_templates && Object.keys(compData.message_templates).length > 0) {
+                        setMessageTemplates(prev => ({ ...prev, ...compData.message_templates }));
+                      }
+                    }
+                    await fetchLeads('superadmin', 'all', selId, customTitles);
+                  } else {
+                    setColumns(JSON.parse(JSON.stringify(INITIAL_COLUMNS)));
+                  }
+                }}
+                className="bg-white border-none rounded text-sm p-1.5 font-semibold text-slate-700 focus:ring-2 focus:ring-yellow-400 cursor-pointer shadow-sm max-w-[180px] truncate"
+              >
+                <option value="">-- Selecione --</option>
+                {allCompanies.map(c => (
+                  <option key={c.id} value={c.id}>{c.name}</option>
                 ))}
               </select>
             </div>
