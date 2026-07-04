@@ -50,7 +50,14 @@ export default function SuperAdminKanban({ session }) {
   const [waMsg, setWaMsg] = useState('');
   const [waConnected, setWaConnected] = useState(false);
 
-  useEffect(() => { fetchCompanies(); checkWa(); }, []);
+  useEffect(() => {
+    fetchCompanies();
+    checkWa();
+
+    const handleRefresh = () => fetchCompanies();
+    window.addEventListener('sa-companies-changed', handleRefresh);
+    return () => window.removeEventListener('sa-companies-changed', handleRefresh);
+  }, []);
 
   const checkWa = async () => {
     try {

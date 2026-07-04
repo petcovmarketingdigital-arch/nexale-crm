@@ -273,75 +273,105 @@ export default function App({ session }) {
     const valorOportunidade = parseFloat(formData.valor) || 0;
 
     try {
-      if (editingCardId) {
-        setColumns(columns.map(col => ({
-          ...col,
-          cards: col.cards.map(c => 
-            c.id === editingCardId 
-              ? { ...c, ...formData, valor: valorOportunidade }
-              : c
-          )
-        })));
-
-        const { error } = await supabase.from('leads').update({
-          empresa: formData.empresa,
-          contato: formData.contato,
-          telefone: formData.telefone,
-          email: formData.email,
-          tipo: formData.tipo,
-          metragem: formData.observacao,
-          kits: 0,
-          valor: valorOportunidade,
-          status_amostra: formData.temperatura,
-          data_retorno: formData.dataRetorno || null,
-          notas: formData.notas
-        }).eq('id', editingCardId);
-        
-        if (error) throw error;
+      if (userRole === 'superadmin') {
+        if (editingCardId) {
+          const { error } = await supabase.from('companies').update({
+            name: formData.empresa,
+            phone: formData.telefone,
+            sa_temperatura: formData.temperatura,
+            sa_valor: valorOportunidade,
+            sa_obs: formData.observacao,
+          }).eq('id', editingCardId);
+          if (error) throw error;
+        } else {
+          const inviteCodeGenerated = Math.random().toString(36).substring(2, 8).toUpperCase();
+          const { error } = await supabase.from('companies').insert([{
+            name: formData.empresa,
+            phone: formData.telefone,
+            invite_code: inviteCodeGenerated,
+            sa_temperatura: formData.temperatura,
+            sa_valor: valorOportunidade,
+            sa_obs: formData.observacao,
+            sa_stage: 'leads',
+            subscription_status: 'trial'
+          }]);
+          if (error) throw error;
+        }
+        // Atualiza a lista local de empresas do superadmin
+        const { data: companiesData } = await supabase.from('companies').select('id, name, phone, subscription_status, sa_stage, sa_temperatura, sa_valor').order('name', { ascending: true });
+        if (companiesData) setAllCompanies(companiesData);
+        window.dispatchEvent(new Event('sa-companies-changed'));
       } else {
-        // NOVO LEAD (MULTI-TENANT)
-        const { data, error } = await supabase.from('leads').insert([{
-          user_id: session.user.id,
-          company_id: companyId, // VINCULA À EMPRESA CORRETA
-          empresa: formData.empresa,
-          contato: formData.contato,
-          telefone: formData.telefone,
-          email: formData.email,
-          tipo: formData.tipo,
-          metragem: formData.observacao,
-          kits: 0,
-          valor: valorOportunidade,
-          status_amostra: formData.temperatura,
-          coluna_id: 'leads',
-          data_retorno: formData.dataRetorno || null,
-          notas: formData.notas
-        }]).select();
-        
-        if (error) throw error;
+        if (editingCardId) {
+          setColumns(columns.map(col => ({
+            ...col,
+            cards: col.cards.map(c => 
+              c.id === editingCardId 
+                ? { ...c, ...formData, valor: valorOportunidade }
+                : c
+            )
+          })));
 
-        if (data && data.length > 0) {
-          const dbLead = data[0];
-          const newCard = {
-            id: dbLead.id,
-            empresa: dbLead.empresa,
-            contato: dbLead.contato,
-            telefone: dbLead.telefone,
-            email: dbLead.email,
-            tipo: dbLead.tipo,
-            observacao: dbLead.metragem,
-            valor: Number(dbLead.valor),
-            temperatura: dbLead.status_amostra,
-            dataCriacao: new Date(dbLead.data_criacao).toLocaleDateString('pt-BR'),
-            dataRetorno: dbLead.data_retorno,
-            notas: dbLead.notas,
-            data_movimentacao: dbLead.data_movimentacao
-          };
-          setColumns(columns.map(col => {
-            if (col.id === 'leads') {
-              return { ...col, cards: [newCard, ...col.cards] };
-            }
-            return col;
-          }));
+          const { error } = await supabase.from('leads').update({
+            empresa: formData.empresa,
+            contato: formData.contato,
+            telefone: formData.telefone,
+            email: formData.email,
+            tipo: formData.tipo,
+            metragem: formData.observacao,
+            kits: 0,
+            valor: valorOportunidade,
+            status_amostra: formData.temperatura,
+            data_retorno: formData.dataRetorno || null,
+            notas: formData.notas
+          }).eq('id', editingCardId);
+          
+          if (error) throw error;
+        } else {
+          // NOVO LEAD (MULTI-TENANT)
+          const { data, error } = await supabase.from('leads').insert([{
+            user_id: session.user.id,
+            company_id: companyId, // VINCULA À EMPRESA CORRETA
+            empresa: formData.empresa,
+            contato: formData.contato,
+            telefone: formData.telefone,
+            email: formData.email,
+            tipo: formData.tipo,
+            metragem: formData.observacao,
+            kits: 0,
+            valor: valorOportunidade,
+            status_amostra: formData.temperatura,
+            coluna_id: 'leads',
+            data_retorno: formData.dataRetorno || null,
+            notas: formData.notas
+          }]).select();
+          
+          if (error) throw error;
+
+          if (data && data.length > 0) {
+            const dbLead = data[0];
+            const newCard = {
+              id: dbLead.id,
+              empresa: dbLead.empresa,
+              contato: dbLead.contato,
+              telefone: dbLead.telefone,
+              email: dbLead.email,
+              tipo: dbLead.tipo,
+              observacao: dbLead.metragem,
+              valor: Number(dbLead.valor),
+              temperatura: dbLead.status_amostra,
+              dataCriacao: new Date(dbLead.data_criacao).toLocaleDateString('pt-BR'),
+              dataRetorno: dbLead.data_retorno,
+              notas: dbLead.notas,
+              data_movimentacao: dbLead.data_movimentacao
+            };
+            setColumns(columns.map(col => {
+              if (col.id === 'leads') {
+                return { ...col, cards: [newCard, ...col.cards] };
+              }
+              return col;
+            }));
+          }
         }
       }
 
@@ -357,13 +387,22 @@ export default function App({ session }) {
   const handleDeleteLead = async (leadId) => {
     if (!window.confirm("Tem certeza que deseja excluir este cliente? Esta ação não pode ser desfeita.")) return;
     try {
-      const { error } = await supabase.from('leads').delete().eq('id', leadId);
-      if (error) throw error;
-      
-      setColumns(columns.map(col => ({
-        ...col,
-        cards: col.cards.filter(c => c.id !== leadId)
-      })));
+      if (userRole === 'superadmin') {
+        const { error } = await supabase.from('companies').delete().eq('id', leadId);
+        if (error) throw error;
+        
+        const { data: companiesData } = await supabase.from('companies').select('id, name, phone, subscription_status, sa_stage, sa_temperatura, sa_valor').order('name', { ascending: true });
+        if (companiesData) setAllCompanies(companiesData);
+        window.dispatchEvent(new Event('sa-companies-changed'));
+      } else {
+        const { error } = await supabase.from('leads').delete().eq('id', leadId);
+        if (error) throw error;
+        
+        setColumns(columns.map(col => ({
+          ...col,
+          cards: col.cards.filter(c => c.id !== leadId)
+        })));
+      }
       
       setEditingCardId(null);
       setShowModal(false);
