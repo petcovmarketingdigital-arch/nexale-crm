@@ -1498,7 +1498,7 @@ export default function App({ session }) {
               setCampProgress(prev => ({ ...prev, sent: i + 1, log: [{ nome: contact.nome, telefone: contact.telefone, status: '✅ Enviado' }, ...prev.log] }));
             } catch(e) {
               console.error(e);
-              setCampProgress(prev => ({ ...prev, sent: i + 1, log: [{ nome: contact.nome, telefone: contact.telefone, status: '❌ Erro' }, ...prev.log] }));
+              setCampProgress(prev => ({ ...prev, sent: i + 1, log: [{ nome: contact.nome, telefone: contact.telefone, status: `❌ Erro: ${e.message}` }, ...prev.log] }));
             }
             if (i < allContacts.length - 1) await new Promise(r => setTimeout(r, campDelay * 1000));
           }
