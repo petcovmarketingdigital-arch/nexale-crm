@@ -630,11 +630,12 @@ export default function App({ session }) {
     if (clean.length === 10 || clean.length === 11) {
       clean = '55' + clean;
     }
+    const rawBase64 = base64Audio.includes('base64,') ? base64Audio.split('base64,')[1] : base64Audio;
     const instanceName = userRole === 'superadmin' ? 'superadmin' : companyId;
     const res = await fetch(`/evolution/message/sendWhatsAppAudio/${instanceName}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'apikey': '123' },
-      body: JSON.stringify({ number: clean, audio: base64Audio })
+      body: JSON.stringify({ number: clean, audio: rawBase64 })
     });
     if (!res.ok) {
       const err = await res.text();
@@ -649,6 +650,7 @@ export default function App({ session }) {
     if (clean.length === 10 || clean.length === 11) {
       clean = '55' + clean;
     }
+    const rawBase64 = base64Media.includes('base64,') ? base64Media.split('base64,')[1] : base64Media;
     const instanceName = userRole === 'superadmin' ? 'superadmin' : companyId;
     const res = await fetch(`/evolution/message/sendMedia/${instanceName}`, {
       method: 'POST',
@@ -657,7 +659,7 @@ export default function App({ session }) {
         number: clean,
         mediatype: mediaType,
         mimetype: mimeType,
-        media: base64Media,
+        media: rawBase64,
         fileName: fileName,
         caption: ""
       })
