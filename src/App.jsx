@@ -82,6 +82,7 @@ export default function App({ session }) {
   const [campDelay, setCampDelay] = useState(20);
   const [campMode, setCampMode] = useState('agora'); // 'agora' | 'agendar'
   const [campDate, setCampDate] = useState('');
+  const [campAttachment, setCampAttachment] = useState(null); // { name, size, mimetype, base64, type }
 
   const [formData, setFormData] = useState({
     empresa: '',
@@ -614,6 +615,51 @@ export default function App({ session }) {
     if (!res.ok) {
       const err = await res.text();
       console.error('Erro na Evolution API:', err);
+      throw new Error(`Erro ${res.status}: ${err}`);
+    }
+    return res;
+  };
+
+  const sendWahaAudio = async (phoneNumber, base64Audio) => {
+    let clean = phoneNumber.replace(/\D/g, '');
+    if (clean.length === 10 || clean.length === 11) {
+      clean = '55' + clean;
+    }
+    const instanceName = userRole === 'superadmin' ? 'superadmin' : companyId;
+    const res = await fetch(`/evolution/message/sendWhatsAppAudio/${instanceName}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'apikey': '123' },
+      body: JSON.stringify({ number: clean, audio: base64Audio })
+    });
+    if (!res.ok) {
+      const err = await res.text();
+      console.error('Erro ao enviar audio:', err);
+      throw new Error(`Erro ${res.status}: ${err}`);
+    }
+    return res;
+  };
+
+  const sendWahaMedia = async (phoneNumber, mediaType, mimeType, base64Media, fileName) => {
+    let clean = phoneNumber.replace(/\D/g, '');
+    if (clean.length === 10 || clean.length === 11) {
+      clean = '55' + clean;
+    }
+    const instanceName = userRole === 'superadmin' ? 'superadmin' : companyId;
+    const res = await fetch(`/evolution/message/sendMedia/${instanceName}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'apikey': '123' },
+      body: JSON.stringify({
+        number: clean,
+        mediatype: mediaType,
+        mimetype: mimeType,
+        media: base64Media,
+        fileName: fileName,
+        caption: ""
+      })
+    });
+    if (!res.ok) {
+      const err = await res.text();
+      console.error('Erro ao enviar media:', err);
       throw new Error(`Erro ${res.status}: ${err}`);
     }
     return res;
@@ -1327,12 +1373,13 @@ export default function App({ session }) {
         };
 
         const handleFireCampaign = async () => {
-          if (!campMsg.trim()) { alert('Escreva a mensagem antes de disparar!'); return; }
+          if (!campMsg.trim() && !campAttachment) { alert('Escreva uma mensagem ou anexe um arquivo antes de disparar!'); return; }
           const crmContacts = filteredLeads.filter(l => campSelectedLeads.includes(l.id)).map(l => ({ nome: l.contato?.split(' ')[0] || 'Cliente', telefone: l.telefone }));
           const allContacts = campTab === 'crm' ? crmContacts : campTab === 'externa' ? externalContacts : [...crmContacts, ...externalContacts];
           if (allContacts.length === 0) { alert('Selecione ao menos um contato para disparar.'); return; }
           
           if (campMode === 'agendar') {
+            if (campAttachment) { alert('Não é possível agendar campanhas com anexo de arquivo ou áudio.'); return; }
             if (!campDate) { alert('Selecione uma data e hora para agendar.'); return; }
             const scheduleTime = new Date(campDate);
             if (scheduleTime <= new Date()) { alert('A data de agendamento deve ser no futuro.'); return; }
@@ -1366,11 +1413,29 @@ export default function App({ session }) {
 
           for (let i = 0; i < allContacts.length; i++) {
             const contact = allContacts[i];
-            const msg = campMsg.replace(/\{\{nome\}\}/gi, contact.nome);
             try {
-              await sendWahaMessage(contact.telefone, msg);
+              // 1. Envia texto se houver
+              if (campMsg.trim()) {
+                const msg = campMsg.replace(/\{\{nome\}\}/gi, contact.nome);
+                await sendWahaMessage(contact.telefone, msg);
+              }
+              // 2. Envia anexo se houver
+              if (campAttachment) {
+                if (campAttachment.type === 'audio') {
+                  await sendWahaAudio(contact.telefone, campAttachment.base64);
+                } else {
+                  await sendWahaMedia(
+                    contact.telefone,
+                    campAttachment.type,
+                    campAttachment.mimetype,
+                    campAttachment.base64,
+                    campAttachment.name
+                  );
+                }
+              }
               setCampProgress(prev => ({ ...prev, sent: i + 1, log: [{ nome: contact.nome, telefone: contact.telefone, status: '✅ Enviado' }, ...prev.log] }));
             } catch(e) {
+              console.error(e);
               setCampProgress(prev => ({ ...prev, sent: i + 1, log: [{ nome: contact.nome, telefone: contact.telefone, status: '❌ Erro' }, ...prev.log] }));
             }
             if (i < allContacts.length - 1) await new Promise(r => setTimeout(r, campDelay * 1000));
@@ -1460,6 +1525,78 @@ export default function App({ session }) {
                       <p className="text-xs text-green-800 whitespace-pre-wrap">{campMsg.replace(/\{\{nome\}\}/gi, 'João')}</p>
                     </div>
                   )}
+
+                  {/* Anexo de Arquivo ou Áudio */}
+                  <div className="mt-4 border-t border-slate-100 pt-4">
+                    <label className="block text-xs font-bold text-slate-600 uppercase mb-2">📎 Anexar Documento ou Áudio</label>
+                    <input
+                      type="file"
+                      id="campFile"
+                      onChange={async (e) => {
+                        const file = e.target.files[0];
+                        if (!file) return;
+                        if (file.size > 5 * 1024 * 1024) {
+                          alert("Por favor, selecione um arquivo de até 5MB.");
+                          e.target.value = '';
+                          return;
+                        }
+                        const reader = new FileReader();
+                        reader.onload = () => {
+                          let type = 'document';
+                          if (file.type.startsWith('audio/')) type = 'audio';
+                          else if (file.type.startsWith('image/')) type = 'image';
+                          else if (file.type.startsWith('video/')) type = 'video';
+                          
+                          setCampAttachment({
+                            name: file.name,
+                            size: file.size,
+                            mimetype: file.type,
+                            base64: reader.result,
+                            type: type
+                          });
+                        };
+                        reader.readAsDataURL(file);
+                      }}
+                      className="hidden"
+                      accept="audio/*,image/*,video/*,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/zip"
+                    />
+                    
+                    {!campAttachment ? (
+                      <label
+                        htmlFor="campFile"
+                        className="flex flex-col items-center justify-center p-4 border-2 border-dashed border-slate-200 hover:border-orange-400 rounded-xl cursor-pointer bg-slate-50 hover:bg-orange-50/20 transition-all text-center"
+                      >
+                        <span className="text-2xl mb-1">📎</span>
+                        <span className="text-xs font-bold text-slate-600">Escolher Arquivo (PDF, Imagem, Áudio...)</span>
+                        <span className="text-[10px] text-slate-400 mt-0.5">Tamanho máximo: 5MB</span>
+                      </label>
+                    ) : (
+                      <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-between">
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <span className="text-2xl">
+                            {campAttachment.type === 'audio' ? '🎤' : campAttachment.type === 'image' ? '🖼️' : '📄'}
+                          </span>
+                          <div className="min-w-0">
+                            <p className="text-xs font-bold text-slate-700 truncate">{campAttachment.name}</p>
+                            <p className="text-[10px] text-slate-500 font-medium">
+                              {(campAttachment.size / 1024).toFixed(1)} KB {campAttachment.type === 'audio' && ' · Envia como áudio gravado'}
+                            </p>
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setCampAttachment(null);
+                            const fileInput = document.getElementById('campFile');
+                            if (fileInput) fileInput.value = '';
+                          }}
+                          className="text-red-500 hover:text-red-700 text-xs font-black p-1 hover:bg-red-50 rounded"
+                        >
+                          Remover
+                        </button>
+                      </div>
+                    )}
+                  </div>
                 </div>
 
                 <div className="bg-white rounded-2xl shadow-sm shadow-indigo-900/5 border border-slate-100 p-6">
@@ -1493,6 +1630,11 @@ export default function App({ session }) {
                         onChange={e => setCampDate(e.target.value)} 
                         className="w-full text-sm border border-slate-200 rounded-lg p-2 font-semibold focus:outline-none focus:ring-2 focus:ring-orange-400"
                       />
+                      {campMode === 'agendar' && campAttachment && (
+                        <p className="text-[11px] text-red-500 font-bold mb-3">
+                          ⚠️ Atenção: Não é possível agendar campanhas com anexo. Mude para 'Agora' ou remova o anexo.
+                        </p>
+                      )}
                       <p className="text-[11px] text-slate-400 mt-2">O servidor fará o disparo automaticamente nesta data, mesmo com o PC desligado.</p>
                     </div>
                   )}
@@ -1501,7 +1643,7 @@ export default function App({ session }) {
                 {/* Botão de disparo */}
                 <button
                   onClick={handleFireCampaign}
-                  disabled={campRunning}
+                  disabled={campRunning || (campMode === 'agendar' && !!campAttachment)}
                   className="w-full py-4 bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 disabled:opacity-50 text-slate-900 font-black rounded-2xl transition-all shadow-lg shadow-orange-500/30 text-lg transform hover:-translate-y-0.5"
                 >
                   {campRunning ? '⏳ Disparando...' : campMode === 'agendar' ? '⏰ Agendar Campanha' : '🚀 Disparar Campanha Agora'}
