@@ -84,6 +84,11 @@ export default function App({ session }) {
   const [campDate, setCampDate] = useState('');
   const [campAttachment, setCampAttachment] = useState(null); // { name, size, mimetype, base64, type }
 
+  const [isRecording, setIsRecording] = useState(false);
+  const [recordingSeconds, setRecordingSeconds] = useState(0);
+  const [mediaRecorderRef, setMediaRecorderRef] = useState(null);
+  const [recordingIntervalId, setRecordingIntervalId] = useState(null);
+
   const [formData, setFormData] = useState({
     empresa: '',
     contato: '',
@@ -681,6 +686,61 @@ export default function App({ session }) {
     } catch (error) {
       alert("Erro na conexão: " + error.message);
     }
+  };
+
+  const startRecording = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const recorder = new MediaRecorder(stream);
+      const chunks = [];
+
+      recorder.ondataavailable = (e) => {
+        if (e.data.size > 0) chunks.push(e.data);
+      };
+
+      recorder.onstop = () => {
+        stream.getTracks().forEach(track => track.stop());
+
+        const blob = new Blob(chunks, { type: 'audio/ogg; codecs=opus' });
+        const fileReader = new FileReader();
+        fileReader.onload = () => {
+          setCampAttachment({
+            name: `Áudio Gravado (${new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}).ogg`,
+            size: blob.size,
+            mimetype: 'audio/ogg',
+            base64: fileReader.result,
+            type: 'audio',
+            isRecorded: true
+          });
+        };
+        fileReader.readAsDataURL(blob);
+      };
+
+      recorder.start();
+      setMediaRecorderRef(recorder);
+      setIsRecording(true);
+      setRecordingSeconds(0);
+
+      const interval = setInterval(() => {
+        setRecordingSeconds(prev => prev + 1);
+      }, 1000);
+      setRecordingIntervalId(interval);
+
+    } catch (err) {
+      console.error(err);
+      alert("Não foi possível acessar o microfone. Verifique se deu permissão no seu navegador.");
+    }
+  };
+
+  const stopRecording = () => {
+    if (mediaRecorderRef && mediaRecorderRef.state !== 'inactive') {
+      mediaRecorderRef.stop();
+    }
+    if (recordingIntervalId) {
+      clearInterval(recordingIntervalId);
+      setRecordingIntervalId(null);
+    }
+    setIsRecording(false);
   };
 
   const [draggedCard, setDraggedCard] = useState(null);
@@ -1562,38 +1622,73 @@ export default function App({ session }) {
                     />
                     
                     {!campAttachment ? (
-                      <label
-                        htmlFor="campFile"
-                        className="flex flex-col items-center justify-center p-4 border-2 border-dashed border-slate-200 hover:border-orange-400 rounded-xl cursor-pointer bg-slate-50 hover:bg-orange-50/20 transition-all text-center"
-                      >
-                        <span className="text-2xl mb-1">📎</span>
-                        <span className="text-xs font-bold text-slate-600">Escolher Arquivo (PDF, Imagem, Áudio...)</span>
-                        <span className="text-[10px] text-slate-400 mt-0.5">Tamanho máximo: 5MB</span>
-                      </label>
-                    ) : (
-                      <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-between">
-                        <div className="flex items-center gap-2.5 min-w-0">
-                          <span className="text-2xl">
-                            {campAttachment.type === 'audio' ? '🎤' : campAttachment.type === 'image' ? '🖼️' : '📄'}
-                          </span>
-                          <div className="min-w-0">
-                            <p className="text-xs font-bold text-slate-700 truncate">{campAttachment.name}</p>
-                            <p className="text-[10px] text-slate-500 font-medium">
-                              {(campAttachment.size / 1024).toFixed(1)} KB {campAttachment.type === 'audio' && ' · Envia como áudio gravado'}
-                            </p>
-                          </div>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setCampAttachment(null);
-                            const fileInput = document.getElementById('campFile');
-                            if (fileInput) fileInput.value = '';
-                          }}
-                          className="text-red-500 hover:text-red-700 text-xs font-black p-1 hover:bg-red-50 rounded"
+                      <div className="grid grid-cols-2 gap-3">
+                        <label
+                          htmlFor="campFile"
+                          className="flex flex-col items-center justify-center p-4 border-2 border-dashed border-slate-200 hover:border-orange-400 rounded-xl cursor-pointer bg-slate-50 hover:bg-orange-50/20 transition-all text-center h-28"
                         >
-                          Remover
-                        </button>
+                          <span className="text-2xl mb-1">📎</span>
+                          <span className="text-xs font-bold text-slate-600">Enviar Arquivo</span>
+                          <span className="text-[10px] text-slate-400 mt-0.5">PDF, Imagem (Max 5MB)</span>
+                        </label>
+                        
+                        {!isRecording ? (
+                          <button
+                            type="button"
+                            onClick={startRecording}
+                            className="flex flex-col items-center justify-center p-4 border-2 border-dashed border-slate-200 hover:border-red-400 rounded-xl bg-slate-50 hover:bg-red-50/20 transition-all text-center h-28"
+                          >
+                            <span className="text-2xl mb-1 text-red-500">🎤</span>
+                            <span className="text-xs font-bold text-slate-600">Gravar Áudio</span>
+                            <span className="text-[10px] text-slate-400 mt-0.5">Grave sua voz diretamente</span>
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={stopRecording}
+                            className="flex flex-col items-center justify-center p-4 border-2 border-red-300 rounded-xl bg-red-50 text-center h-28 animate-pulse"
+                          >
+                            <span className="text-2xl mb-1 text-red-600">🔴</span>
+                            <span className="text-xs font-bold text-red-700">Gravando...</span>
+                            <span className="text-sm font-black text-red-800 mt-1 font-mono">
+                              {Math.floor(recordingSeconds / 60)}:{(recordingSeconds % 60).toString().padStart(2, '0')}
+                            </span>
+                            <span className="text-[9px] text-red-500 font-bold mt-1 uppercase">Clique para parar</span>
+                          </button>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-3">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            <span className="text-2xl">
+                              {campAttachment.type === 'audio' ? '🎤' : campAttachment.type === 'image' ? '🖼️' : '📄'}
+                            </span>
+                            <div className="min-w-0">
+                              <p className="text-xs font-bold text-slate-700 truncate">{campAttachment.name}</p>
+                              <p className="text-[10px] text-slate-500 font-medium">
+                                {(campAttachment.size / 1024).toFixed(1)} KB {campAttachment.type === 'audio' && ' · Envia como áudio gravado'}
+                              </p>
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setCampAttachment(null);
+                              const fileInput = document.getElementById('campFile');
+                              if (fileInput) fileInput.value = '';
+                            }}
+                            className="text-red-500 hover:text-red-700 text-xs font-black p-1 hover:bg-red-50 rounded"
+                          >
+                            Remover
+                          </button>
+                        </div>
+                        
+                        {campAttachment.type === 'audio' && (
+                          <div className="pt-2 border-t border-slate-200/60 flex items-center justify-center">
+                            <audio src={campAttachment.base64} controls className="w-full h-10" />
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>
