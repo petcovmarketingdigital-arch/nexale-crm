@@ -1577,11 +1577,12 @@ export default function App({ session }) {
                     value={campMsg}
                     onChange={e => setCampMsg(e.target.value)}
                     placeholder={'Olá {{nome}}! 👋\n\nTemos uma oferta especial para você hoje...'}
-                    className="w-full h-40 text-sm border border-slate-200 rounded-xl p-4 resize-none focus:outline-none focus:ring-2 focus:ring-orange-400"
+                    className="w-full h-40 text-sm border border-slate-200 rounded-xl p-4 resize-none focus:outline-none focus:ring-2 focus:ring-orange-400 notranslate"
+                    translate="no"
                   />
                   {campMsg && (
-                    <div className="mt-3 p-3 bg-green-50 border border-green-200 rounded-xl">
-                      <p className="text-[10px] font-bold text-green-700 mb-1 uppercase">Pré-visualização</p>
+                    <div className="mt-3 p-3 bg-green-50 border border-green-200 rounded-xl notranslate" translate="no">
+                      <p className="text-[10px] font-bold text-green-700 mb-1 uppercase translate-yes" translate="yes">Pré-visualização</p>
                       <p className="text-xs text-green-800 whitespace-pre-wrap">{campMsg.replace(/\{\{nome\}\}/gi, 'João')}</p>
                     </div>
                   )}
