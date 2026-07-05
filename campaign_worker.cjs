@@ -203,18 +203,20 @@ app.post('/webhook/:companyId', async (req, res) => {
       console.log(`Phone: ${phone}`);
       console.log(`TextContent: ${textContent}`);
 
-      // Verifica se a empresa configurou um Gatilho
-      const { data: compData } = await supabaseAdmin.from('companies').select('message_templates').eq('id', companyId).single();
+      console.log('Trace 1: Querying companies message_templates...');
+      const { data: compData, error: compErr } = await supabaseAdmin.from('companies').select('message_templates').eq('id', companyId).single();
+      console.log(`Trace 2: companies query completed. compData: ${JSON.stringify(compData)}, error: ${compErr?.message}`);
       const triggerPhrase = compData?.message_templates?.whatsapp_trigger_phrase;
       
       const cleanPhone = phone.startsWith('55') ? phone.slice(2) : phone;
+      console.log(`Trace 3: Querying leads. cleanPhone: ${cleanPhone}`);
       const { data: existingLeads, error: leadCheckErr } = await supabaseAdmin
         .from('leads')
         .select('id, ai_paused')
         .eq('company_id', companyId)
         .or(`telefone.eq.${phone},telefone.eq.${cleanPhone},telefone.eq.55${cleanPhone}`);
 
-      console.log(`Existing Leads Count: ${existingLeads?.length}, Error: ${leadCheckErr?.message}`);
+      console.log(`Trace 4: leads query completed. count: ${existingLeads?.length}, Error: ${leadCheckErr?.message}`);
 
       // Se o lead já existe no banco:
       if (existingLeads && existingLeads.length > 0) {
@@ -223,6 +225,7 @@ app.post('/webhook/:companyId', async (req, res) => {
         const aiPrompt = compData?.message_templates?.ai_prompt;
         const aiApiKey = compData?.message_templates?.ai_api_key;
 
+        console.log(`Trace 5: Lead found. ai_paused: ${lead.ai_paused}, aiEnabled: ${aiEnabled}`);
         // Se a IA estiver ativada e o atendimento não estiver pausado (human takeover):
         if (aiEnabled && !lead.ai_paused) {
           console.log(`🤖 Lead ${phone} existe e IA está ATIVA. Chamando Gemini...`);
