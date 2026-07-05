@@ -89,6 +89,11 @@ export default function App({ session }) {
   const [mediaRecorderRef, setMediaRecorderRef] = useState(null);
   const [recordingIntervalId, setRecordingIntervalId] = useState(null);
 
+  const [aiEnabled, setAiEnabled] = useState(false);
+  const [aiPrompt, setAiPrompt] = useState('Você é um atendente simpático da nossa empresa.');
+  const [aiApiKey, setAiApiKey] = useState('');
+  const [activeCardAiPaused, setActiveCardAiPaused] = useState(false);
+
   const [formData, setFormData] = useState({
     empresa: '',
     contato: '',
@@ -148,6 +153,9 @@ export default function App({ session }) {
           if (compData.message_templates.whatsapp_trigger_phrase) {
             setTriggerPhrase(compData.message_templates.whatsapp_trigger_phrase);
           }
+          setAiEnabled(!!compData.message_templates.ai_enabled);
+          setAiPrompt(compData.message_templates.ai_prompt || 'Você é um atendente simpático da nossa empresa.');
+          setAiApiKey(compData.message_templates.ai_api_key || '');
         }
       }
 
@@ -203,7 +211,8 @@ export default function App({ session }) {
           dataCriacao: new Date(dbLead.data_criacao).toLocaleDateString('pt-BR'),
           dataRetorno: dbLead.data_retorno,
           data_movimentacao: dbLead.data_movimentacao || dbLead.data_criacao,
-          origem: dbLead.origem || 'Novo Lead'
+          origem: dbLead.origem || 'Novo Lead',
+          ai_paused: !!dbLead.ai_paused
         };
         const targetCol = cols.find(c => c.id === dbLead.coluna_id) || cols[0];
         targetCol.cards.push(lead);
@@ -436,6 +445,7 @@ export default function App({ session }) {
       dataRetorno: card.dataRetorno ? new Date(card.dataRetorno).toISOString().slice(0, 16) : '',
       notas: card.notas || ''
     });
+    setActiveCardAiPaused(!!card.ai_paused);
     setEditingCardId(card.id);
     setShowModal(true);
     setShowAdvanced(!!card.email || !!card.tipo);
@@ -767,6 +777,23 @@ export default function App({ session }) {
       }
     } catch (e) {
       alert('Erro ao salvar: ' + e.message);
+    }
+  };
+
+  const handleSaveAiSettings = async () => {
+    try {
+      const newTemplates = { 
+        ...messageTemplates, 
+        ai_enabled: aiEnabled,
+        ai_prompt: aiPrompt,
+        ai_api_key: aiApiKey
+      };
+      const { error } = await supabase.from('companies').update({ message_templates: newTemplates }).eq('id', companyId);
+      if (error) throw error;
+      setMessageTemplates(newTemplates);
+      alert('Configurações da IA de Atendimento salvas com sucesso!');
+    } catch (e) {
+      alert('Erro ao salvar IA: ' + e.message);
     }
   };
 
@@ -1893,98 +1920,165 @@ export default function App({ session }) {
       {currentView === 'superadmin' && <SuperAdminPanel />}
 
       {currentView === 'whatsapp' && (
-        <div className="bg-white p-8 rounded-xl shadow-sm shadow-indigo-900/5 border border-slate-100 max-w-2xl mx-auto mt-8 text-center animate-fade-in">
-          <div className="w-16 h-16 bg-green-100 rounded-2xl mx-auto mb-4 flex items-center justify-center">
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" /></svg>
-          </div>
-          <h2 className="text-2xl font-black text-slate-800 mb-2">Conecte o seu WhatsApp</h2>
-          <p className="text-slate-500 mb-8 max-w-md mx-auto">Para que a Nexale envie mensagens automaticamente para seus leads, você precisa conectar o número da sua empresa.</p>
-          
-          <div className="border-2 border-dashed border-slate-200 rounded-xl p-8 bg-slate-50 relative overflow-hidden">
-            <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-green-400 to-emerald-500"></div>
+        <div className="max-w-2xl mx-auto space-y-6 mt-8 animate-fade-in">
+          <div className="bg-white p-8 rounded-xl shadow-sm shadow-indigo-900/5 border border-slate-100 text-center">
+            <div className="w-16 h-16 bg-green-100 rounded-2xl mx-auto mb-4 flex items-center justify-center">
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" /></svg>
+            </div>
+            <h2 className="text-2xl font-black text-slate-800 mb-2">Conecte o seu WhatsApp</h2>
+            <p className="text-slate-500 mb-8 max-w-md mx-auto">Para que a Nexale envie mensagens automaticamente para seus leads, você precisa conectar o número da sua empresa.</p>
             
-            {waConnected ? (
-              <div className="flex flex-col items-center animate-fade-in py-8">
-                <div className="w-24 h-24 bg-green-100 rounded-full flex items-center justify-center mb-6 shadow-inner">
-                  <svg xmlns="http://www.w3.org/2000/svg" className="h-12 w-12 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                  </svg>
-                </div>
-                <h3 className="text-2xl font-bold text-slate-800 mb-2">Conectado com Sucesso!</h3>
-                <p className="text-slate-500 mb-2 font-medium">Sua conta ({waUser}) está vinculada à Nexale.</p>
-                <p className="text-sm text-slate-400 mb-8">As mensagens automáticas serão disparadas quando você mover cards no Kanban.</p>
+            <div className="border-2 border-dashed border-slate-200 rounded-xl p-8 bg-slate-50 relative overflow-hidden">
+              <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-green-400 to-emerald-500"></div>
+              
+              {waConnected ? (
+                <div className="flex flex-col items-center py-8">
+                  <div className="w-24 h-24 bg-green-100 rounded-full flex items-center justify-center mb-6 shadow-inner">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-12 w-12 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                    </svg>
+                  </div>
+                  <h3 className="text-2xl font-bold text-slate-800 mb-2">Conectado com Sucesso!</h3>
+                  <p className="text-slate-500 mb-2 font-medium">Sua conta ({waUser}) está vinculada à Nexale.</p>
+                  <p className="text-sm text-slate-400 mb-8">As mensagens automáticas serão disparadas quando você mover cards no Kanban.</p>
 
-                <button 
-                  onClick={() => setCurrentView('campanha')}
-                  className="bg-orange-500 hover:bg-orange-600 text-slate-900 font-bold py-4 px-8 rounded-xl transition-all shadow-lg shadow-orange-500/30 transform hover:-translate-y-0.5 w-full max-w-sm flex items-center justify-center gap-3 text-lg mb-3"
-                >
-                  <span>🚀 Ir para Campanhas</span>
-                </button>
+                  <button 
+                    onClick={() => setCurrentView('campanha')}
+                    className="bg-orange-500 hover:bg-orange-600 text-slate-900 font-bold py-4 px-8 rounded-xl transition-all shadow-lg shadow-orange-500/30 transform hover:-translate-y-0.5 w-full max-w-sm flex items-center justify-center gap-3 text-lg mb-3"
+                  >
+                    <span>🚀 Ir para Campanhas</span>
+                  </button>
 
-                <button 
-                  onClick={() => setCurrentView('kanban')}
-                  className="bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold py-3 px-8 rounded-xl transition-all w-full max-w-sm flex items-center justify-center gap-2 text-sm"
-                >
-                  📋 Voltar ao Kanban
-                </button>
+                  <button 
+                    onClick={() => setCurrentView('kanban')}
+                    className="bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold py-3 px-8 rounded-xl transition-all w-full max-w-sm flex items-center justify-center gap-2 text-sm"
+                  >
+                    📋 Voltar ao Kanban
+                  </button>
 
-                <button 
-                  onClick={async () => {
-                    if (window.confirm('Tem certeza que deseja desconectar o seu WhatsApp? Você terá que ler o QR Code novamente.')) {
-                      try {
-                        const activeInstance = userRole === 'superadmin' ? 'superadmin' : companyId;
-                        await fetch(`/evolution/instance/logout/${activeInstance}`, {
-                          method: 'DELETE',
-                          headers: { 'apikey': '123' }
-                        });
-                      } catch(e) {
-                        console.warn('Erro ao desconectar no servidor:', e);
+                  <button 
+                    onClick={async () => {
+                      if (window.confirm('Tem certeza que deseja desconectar o seu WhatsApp? Você terá que ler o QR Code novamente.')) {
+                        try {
+                          const activeInstance = userRole === 'superadmin' ? 'superadmin' : companyId;
+                          await fetch(`/evolution/instance/logout/${activeInstance}`, {
+                            method: 'DELETE',
+                            headers: { 'apikey': '123' }
+                          });
+                        } catch(e) {
+                          console.warn('Erro ao desconectar no servidor:', e);
+                        }
+                        setIsWahaConnected(false);
+                        setWaConnected(false);
+                        setWaUser('');
+                        handleGenerateQR();
                       }
-                      setIsWahaConnected(false);
-                      setWaConnected(false);
-                      setWaUser('');
-                      handleGenerateQR();
-                    }
-                  }}
-                  className="mt-6 text-xs font-bold text-red-500 hover:text-red-700 transition-colors underline"
+                    }}
+                    className="mt-6 text-xs font-bold text-red-500 hover:text-red-700 transition-colors underline"
+                  >
+                    Desconectar WhatsApp
+                  </button>
+                </div>
+              ) : (
+                <>
+                  <p className="text-sm font-bold text-slate-400 mb-6 uppercase tracking-wider">Passo a Passo</p>
+                  <ol className="text-left text-sm text-slate-600 mb-8 space-y-3 font-medium max-w-sm mx-auto">
+                    <li className="flex gap-3"><span className="bg-white border border-slate-200 rounded-full w-5 h-5 flex items-center justify-center text-xs font-bold shrink-0">1</span> Abra o WhatsApp no seu celular</li>
+                    <li className="flex gap-3"><span className="bg-white border border-slate-200 rounded-full w-5 h-5 flex items-center justify-center text-xs font-bold shrink-0">2</span> Toque em Mais opções (⋮) ou Configurações</li>
+                    <li className="flex gap-3"><span className="bg-white border border-slate-200 rounded-full w-5 h-5 flex items-center justify-center text-xs font-bold shrink-0">3</span> Toque em Dispositivos conectados e Conectar um dispositivo</li>
+                  </ol>
+                  
+                  {!qrCodeImage ? (
+                    <button 
+                      onClick={handleGenerateQR}
+                      disabled={isGeneratingQR}
+                      className="bg-green-500 hover:bg-green-600 text-slate-900 font-bold py-3 px-6 rounded-xl transition-all shadow-lg shadow-green-500/30 transform hover:-translate-y-0.5 w-full max-w-xs disabled:opacity-50"
+                    >
+                      {isGeneratingQR ? 'Gerando...' : 'Gerar QR Code de Conexão'}
+                    </button>
+                  ) : (
+                    <div className="flex flex-col items-center animate-fade-in">
+                      <div className="p-2 bg-white rounded-xl shadow-md shadow-indigo-900/10 border-4 border-white mb-4">
+                        <img src={qrCodeImage} alt="WhatsApp QR Code" className="w-64 h-64 object-contain" />
+                      </div>
+                      <p className="text-sm font-bold text-slate-600">Escaneie o código com seu WhatsApp para conectar.</p>
+                      <button 
+                        onClick={() => setQrCodeImage(null)} 
+                        className="mt-4 text-xs font-bold text-slate-400 hover:text-slate-600 transition-colors"
+                      >
+                        Gerar novo código
+                      </button>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          </div>
+
+          {waConnected && userRole === 'admin' && (
+            <div className="bg-white p-8 rounded-xl shadow-sm shadow-indigo-900/5 border border-slate-100 text-left space-y-5 animate-fade-in">
+              <h2 className="text-xl font-black text-slate-800 flex items-center gap-2">
+                🤖 Inteligência Artificial (Atendente Virtual)
+              </h2>
+              <p className="text-sm text-slate-500">
+                Configure a Inteligência Artificial para responder as mensagens do seu WhatsApp automaticamente utilizando o modelo Google Gemini.
+              </p>
+              
+              <div className="bg-indigo-50 border border-indigo-100 rounded-xl p-4 flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-bold text-indigo-900">Ativar Atendente Virtual (IA)</p>
+                  <p className="text-xs text-indigo-700/80">Se ativo, a IA responderá novas conversas recebidas e leads no funil com IA ativa.</p>
+                </div>
+                <label className="relative inline-flex items-center cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={aiEnabled}
+                    onChange={(e) => setAiEnabled(e.target.checked)}
+                    className="sr-only peer"
+                  />
+                  <div className="w-11 h-6 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
+                </label>
+              </div>
+
+              <div className="space-y-2">
+                <label className="block text-xs font-bold text-slate-600 uppercase">Chave da API do Gemini (Google AI Studio)</label>
+                <input
+                  type="password"
+                  value={aiApiKey}
+                  onChange={(e) => setAiApiKey(e.target.value)}
+                  placeholder="Cole sua API Key do Gemini aqui (AIzaSy...)"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 font-mono transition-all"
+                />
+                <p className="text-[10px] text-slate-400">
+                  Obtenha uma chave gratuita acessando o <a href="https://aistudio.google.com/" target="_blank" rel="noreferrer" className="text-indigo-600 underline font-bold">Google AI Studio</a>.
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <label className="block text-xs font-bold text-slate-600 uppercase">Instruções de Comportamento (Prompt)</label>
+                <textarea
+                  value={aiPrompt}
+                  onChange={(e) => setAiPrompt(e.target.value)}
+                  placeholder="Ex: Você é o atendente virtual da nossa empresa. Seja simpático, prestativo e fale de maneira resumida..."
+                  rows={6}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3.5 text-sm focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none notranslate transition-all"
+                  translate="no"
+                />
+                <p className="text-[10px] text-slate-400">
+                  Descreva a persona: quem ela é, regras de preço, horário, e como agir caso o cliente faça perguntas difíceis.
+                </p>
+              </div>
+
+              <div className="flex justify-end pt-2">
+                <button
+                  onClick={handleSaveAiSettings}
+                  className="bg-indigo-600 hover:bg-indigo-700 text-slate-900 font-bold py-3 px-6 rounded-xl transition-all shadow-md shadow-indigo-600/10 cursor-pointer"
                 >
-                  Desconectar WhatsApp
+                  💾 Salvar Configurações da IA
                 </button>
               </div>
-            ) : (
-              <>
-                <p className="text-sm font-bold text-slate-400 mb-6 uppercase tracking-wider">Passo a Passo</p>
-                <ol className="text-left text-sm text-slate-600 mb-8 space-y-3 font-medium max-w-sm mx-auto">
-                  <li className="flex gap-3"><span className="bg-white border border-slate-200 rounded-full w-5 h-5 flex items-center justify-center text-xs font-bold shrink-0">1</span> Abra o WhatsApp no seu celular</li>
-                  <li className="flex gap-3"><span className="bg-white border border-slate-200 rounded-full w-5 h-5 flex items-center justify-center text-xs font-bold shrink-0">2</span> Toque em Mais opções (⋮) ou Configurações</li>
-                  <li className="flex gap-3"><span className="bg-white border border-slate-200 rounded-full w-5 h-5 flex items-center justify-center text-xs font-bold shrink-0">3</span> Toque em Dispositivos conectados e Conectar um dispositivo</li>
-                </ol>
-                
-                {!qrCodeImage ? (
-                  <button 
-                    onClick={handleGenerateQR}
-                    disabled={isGeneratingQR}
-                    className="bg-green-500 hover:bg-green-600 text-slate-900 font-bold py-3 px-6 rounded-xl transition-all shadow-lg shadow-green-500/30 transform hover:-translate-y-0.5 w-full max-w-xs disabled:opacity-50"
-                  >
-                    {isGeneratingQR ? 'Gerando...' : 'Gerar QR Code de Conexão'}
-                  </button>
-                ) : (
-                  <div className="flex flex-col items-center animate-fade-in">
-                    <div className="p-2 bg-white rounded-xl shadow-md shadow-indigo-900/10 border-4 border-white mb-4">
-                      <img src={qrCodeImage} alt="WhatsApp QR Code" className="w-64 h-64 object-contain" />
-                    </div>
-                    <p className="text-sm font-bold text-slate-600">Escaneie o código com seu WhatsApp para conectar.</p>
-                    <button 
-                      onClick={() => setQrCodeImage(null)} 
-                      className="mt-4 text-xs font-bold text-slate-400 hover:text-slate-600 transition-colors"
-                    >
-                      Gerar novo código
-                    </button>
-                  </div>
-                )}
-              </>
-            )}
-          </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -2001,6 +2095,35 @@ export default function App({ session }) {
                   </button>
                 )}
               </div>
+
+              {editingCardId && (
+                <div className="bg-indigo-50 border border-indigo-100 rounded-xl p-3 flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xl">🤖</span>
+                    <div>
+                      <p className="text-xs font-bold text-slate-700">Atendimento por IA Ativo</p>
+                      <p className="text-[10px] text-slate-500">A IA responderá as mensagens recebidas deste lead.</p>
+                    </div>
+                  </div>
+                  <label className="relative inline-flex items-center cursor-pointer select-none">
+                    <input 
+                      type="checkbox" 
+                      checked={!activeCardAiPaused} 
+                      onChange={async (e) => {
+                        const val = !e.target.checked;
+                        setActiveCardAiPaused(val);
+                        setColumns(prev => prev.map(col => ({
+                          ...col,
+                          cards: col.cards.map(c => c.id === editingCardId ? { ...c, ai_paused: val } : c)
+                        })));
+                        await supabase.from('leads').update({ ai_paused: val }).eq('id', editingCardId);
+                      }}
+                      className="sr-only peer" 
+                    />
+                    <div className="w-9 h-5 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-indigo-600"></div>
+                  </label>
+                </div>
+              )}
 
               <form onSubmit={handleSaveLead} className="space-y-5">
                 <div>
