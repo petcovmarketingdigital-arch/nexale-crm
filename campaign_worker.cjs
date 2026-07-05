@@ -207,11 +207,12 @@ app.post('/webhook/:companyId', async (req, res) => {
       const { data: compData } = await supabaseAdmin.from('companies').select('message_templates').eq('id', companyId).single();
       const triggerPhrase = compData?.message_templates?.whatsapp_trigger_phrase;
       
+      const cleanPhone = phone.startsWith('55') ? phone.slice(2) : phone;
       const { data: existingLeads, error: leadCheckErr } = await supabaseAdmin
         .from('leads')
         .select('id, ai_paused')
         .eq('company_id', companyId)
-        .eq('telefone', phone);
+        .or(`telefone.eq.${phone},telefone.eq.${cleanPhone},telefone.eq.55${cleanPhone}`);
 
       console.log(`Existing Leads Count: ${existingLeads?.length}, Error: ${leadCheckErr?.message}`);
 
