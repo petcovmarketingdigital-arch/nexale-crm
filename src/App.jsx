@@ -1085,6 +1085,12 @@ export default function App({ session }) {
                 💬 WhatsApp
               </button>
               <button 
+                onClick={() => setCurrentView('ai_config')}
+                className={`px-3 py-1.5 rounded-md text-sm font-bold transition-all ${currentView === 'ai_config' ? 'bg-indigo-600 text-white shadow-sm shadow-indigo-900/5' : 'text-indigo-600 hover:text-indigo-700 border border-indigo-200/50 bg-indigo-50/50'}`}
+              >
+                🤖 Atendente IA
+              </button>
+              <button 
                 onClick={() => setCurrentView('campanha')}
                 className={`px-3 py-1.5 rounded-md text-sm font-bold transition-all ${currentView === 'campanha' ? 'bg-orange-500 text-slate-900 shadow-sm shadow-indigo-900/5' : 'text-orange-600 hover:text-orange-700'}`}
               >
@@ -2021,6 +2027,11 @@ export default function App({ session }) {
             </div>
           </div>
 
+        </div>
+      )}
+
+      {currentView === 'ai_config' && (
+        <div className="max-w-2xl mx-auto space-y-6 mt-8 animate-fade-in">
           {userRole === 'superadmin' && (
             <div className="bg-white p-6 rounded-xl shadow-sm shadow-indigo-900/5 border border-slate-100 text-left space-y-3">
               <label className="block text-xs font-bold text-slate-500 uppercase">Empresa a Configurar (Visão Master)</label>
@@ -2036,70 +2047,68 @@ export default function App({ session }) {
             </div>
           )}
 
-          {(waConnected || userRole === 'superadmin') && (
-            <div className="bg-white p-8 rounded-xl shadow-sm shadow-indigo-900/5 border border-slate-100 text-left space-y-5 animate-fade-in">
-              <h2 className="text-xl font-black text-slate-800 flex items-center gap-2">
-                🤖 Inteligência Artificial (Atendente Virtual)
-              </h2>
-              <p className="text-sm text-slate-500">
-                Configure a Inteligência Artificial para responder as mensagens do seu WhatsApp automaticamente utilizando o modelo Google Gemini.
-              </p>
-              
-              <div className="bg-indigo-50 border border-indigo-100 rounded-xl p-4 flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-bold text-indigo-900">Ativar Atendente Virtual (IA)</p>
-                  <p className="text-xs text-indigo-700/80">Se ativo, a IA responderá novas conversas recebidas e leads no funil com IA ativa.</p>
-                </div>
-                <label className="relative inline-flex items-center cursor-pointer select-none">
-                  <input
-                    type="checkbox"
-                    checked={aiEnabled}
-                    onChange={(e) => setAiEnabled(e.target.checked)}
-                    className="sr-only peer"
-                  />
-                  <div className="w-11 h-6 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
-                </label>
+          <div className="bg-white p-8 rounded-xl shadow-sm shadow-indigo-900/5 border border-slate-100 text-left space-y-5">
+            <h2 className="text-xl font-black text-slate-800 flex items-center gap-2">
+              🤖 Inteligência Artificial (Atendente Virtual)
+            </h2>
+            <p className="text-sm text-slate-500">
+              Configure a Inteligência Artificial para responder as mensagens do seu WhatsApp automaticamente utilizando o modelo Google Gemini.
+            </p>
+            
+            <div className="bg-indigo-50 border border-indigo-100 rounded-xl p-4 flex items-center justify-between">
+              <div>
+                <p className="text-sm font-bold text-indigo-900">Ativar Atendente Virtual (IA)</p>
+                <p className="text-xs text-indigo-700/80">Se ativo, a IA responderá novas conversas recebidas e leads no funil com IA ativa.</p>
               </div>
-
-              <div className="space-y-2">
-                <label className="block text-xs font-bold text-slate-600 uppercase">Chave da API do Gemini (Google AI Studio)</label>
+              <label className="relative inline-flex items-center cursor-pointer select-none">
                 <input
-                  type="password"
-                  value={aiApiKey}
-                  onChange={(e) => setAiApiKey(e.target.value)}
-                  placeholder="Cole sua API Key do Gemini aqui (AIzaSy...)"
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 font-mono transition-all"
+                  type="checkbox"
+                  checked={aiEnabled}
+                  onChange={(e) => setAiEnabled(e.target.checked)}
+                  className="sr-only peer"
                 />
-                <p className="text-[10px] text-slate-400">
-                  Obtenha uma chave gratuita acessando o <a href="https://aistudio.google.com/" target="_blank" rel="noreferrer" className="text-indigo-600 underline font-bold">Google AI Studio</a>.
-                </p>
-              </div>
-
-              <div className="space-y-2">
-                <label className="block text-xs font-bold text-slate-600 uppercase">Instruções de Comportamento (Prompt)</label>
-                <textarea
-                  value={aiPrompt}
-                  onChange={(e) => setAiPrompt(e.target.value)}
-                  placeholder="Ex: Você é o atendente virtual da nossa empresa. Seja simpático, prestativo e fale de maneira resumida..."
-                  rows={6}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3.5 text-sm focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none notranslate transition-all"
-                  translate="no"
-                />
-                <p className="text-[10px] text-slate-400">
-                  Descreva a persona: quem ela é, regras de preço, horário, e como agir caso o cliente faça perguntas difíceis.
-                </p>
-              </div>
-
-              <div className="flex justify-end pt-2">
-                <button
-                  onClick={handleSaveAiSettings}
-                  className="bg-indigo-600 hover:bg-indigo-700 text-slate-900 font-bold py-3 px-6 rounded-xl transition-all shadow-md shadow-indigo-600/10 cursor-pointer"
-                >
-                  💾 Salvar Configurações da IA
-                </button>
-              </div>
+                <div className="w-11 h-6 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
+              </label>
             </div>
-          )}
+
+            <div className="space-y-2">
+              <label className="block text-xs font-bold text-slate-600 uppercase">Chave da API do Gemini (Google AI Studio)</label>
+              <input
+                type="password"
+                value={aiApiKey}
+                onChange={(e) => setAiApiKey(e.target.value)}
+                placeholder="Cole sua API Key do Gemini aqui (AIzaSy...)"
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 font-mono transition-all"
+              />
+              <p className="text-[10px] text-slate-400">
+                Obtenha uma chave gratuita acessando o <a href="https://aistudio.google.com/" target="_blank" rel="noreferrer" className="text-indigo-600 underline font-bold">Google AI Studio</a>.
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <label className="block text-xs font-bold text-slate-600 uppercase">Instruções de Comportamento (Prompt)</label>
+              <textarea
+                value={aiPrompt}
+                onChange={(e) => setAiPrompt(e.target.value)}
+                placeholder="Ex: Você é o atendente virtual da nossa empresa. Seja simpático, prestativo e fale de maneira resumida..."
+                rows={8}
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3.5 text-sm focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none notranslate transition-all"
+                translate="no"
+              />
+              <p className="text-[10px] text-slate-400">
+                Descreva a persona: quem ela é, regras de preço, horário, e como agir caso o cliente faça perguntas difíceis.
+              </p>
+            </div>
+
+            <div className="flex justify-end pt-2">
+              <button
+                onClick={handleSaveAiSettings}
+                className="bg-indigo-600 hover:bg-indigo-700 text-slate-900 font-bold py-3 px-6 rounded-xl transition-all shadow-md shadow-indigo-600/10 cursor-pointer"
+              >
+                💾 Salvar Configurações da IA
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
