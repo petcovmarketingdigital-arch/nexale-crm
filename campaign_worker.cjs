@@ -32,6 +32,32 @@ const sendWahaMessage = async (companyId, phoneNumber, text) => {
   return sendRes;
 };
 
+// Helper to resolve Brazilian phone variants (with/without DDI 55, with/without extra 9)
+function getPhoneVariants(phone) {
+  let clean = phone.replace(/\D/g, '');
+  if (clean.startsWith('55') && clean.length >= 12) {
+    clean = clean.slice(2);
+  }
+  const variants = new Set();
+  variants.add(clean);
+  variants.add('55' + clean);
+  
+  if (clean.length === 10) {
+    const ddd = clean.slice(0, 2);
+    const local = clean.slice(2);
+    const with9 = ddd + '9' + local;
+    variants.add(with9);
+    variants.add('55' + with9);
+  } else if (clean.length === 11 && clean[2] === '9') {
+    const ddd = clean.slice(0, 2);
+    const local = clean.slice(3);
+    const without9 = ddd + local;
+    variants.add(without9);
+    variants.add('55' + without9);
+  }
+  return Array.from(variants);
+}
+
 // Main Worker Logic
 async function processCampaigns() {
   console.log(`[${new Date().toISOString()}] Checking for scheduled campaigns...`);
@@ -209,12 +235,15 @@ app.post('/webhook/:companyId', async (req, res) => {
       const triggerPhrase = compData?.message_templates?.whatsapp_trigger_phrase;
       
       const cleanPhone = phone.startsWith('55') ? phone.slice(2) : phone;
-      console.log(`Trace 3: Querying leads. cleanPhone: ${cleanPhone}`);
+      const variants = getPhoneVariants(phone);
+      console.log(`Trace 3: Querying leads. cleanPhone: ${cleanPhone}, variants: ${JSON.stringify(variants)}`);
+      
+      const orFilter = variants.map(v => `telefone.eq.${v}`).join(',');
       const { data: existingLeads, error: leadCheckErr } = await supabaseAdmin
         .from('leads')
         .select('id, ai_paused')
         .eq('company_id', companyId)
-        .or(`telefone.eq.${phone},telefone.eq.${cleanPhone},telefone.eq.55${cleanPhone}`);
+        .or(orFilter);
 
       console.log(`Trace 4: leads query completed. count: ${existingLeads?.length}, Error: ${leadCheckErr?.message}`);
 

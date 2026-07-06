@@ -93,6 +93,7 @@ export default function App({ session }) {
   const [aiPrompt, setAiPrompt] = useState('Você é um atendente simpático da nossa empresa.');
   const [aiApiKey, setAiApiKey] = useState('');
   const [activeCardAiPaused, setActiveCardAiPaused] = useState(false);
+  const [selectedConfigCompanyId, setSelectedConfigCompanyId] = useState('');
 
   const [formData, setFormData] = useState({
     empresa: '',
@@ -132,7 +133,14 @@ export default function App({ session }) {
       setCurrentView('superadmin');
       // Carrega lista de empresas para o seletor do superadmin e campanhas
       const { data: companiesData } = await supabase.from('companies').select('id, name, phone, subscription_status, sa_stage, sa_temperatura, sa_valor').order('name', { ascending: true });
-      if (companiesData) setAllCompanies(companiesData);
+      if (companiesData) {
+        setAllCompanies(companiesData);
+        if (companiesData.length > 0) {
+          setSelectedConfigCompanyId(companiesData[0].id);
+        }
+      }
+    } else {
+       setSelectedConfigCompanyId(compId);
     }
 
     let loadedCustomTitles = {};
@@ -142,24 +150,14 @@ export default function App({ session }) {
     }
 
     if (compId) {
-      const { data: compData } = await supabase.from('companies').select('invite_code, subscription_status, trial_ends_at, phone, message_templates').eq('id', compId).single();
+      const { data: compData } = await supabase.from('companies').select('invite_code, subscription_status, trial_ends_at, phone').eq('id', compId).single();
       if (compData) {
         if (role === 'admin') setInviteCode(compData.invite_code);
         setSubscriptionStatus(compData.subscription_status);
         setTrialEndsAt(compData.trial_ends_at);
         setCompanyPhone(compData.phone || '');
-        if (compData.message_templates && Object.keys(compData.message_templates).length > 0) {
-          setMessageTemplates(prev => ({ ...prev, ...compData.message_templates }));
-          if (compData.message_templates.whatsapp_trigger_phrase) {
-            setTriggerPhrase(compData.message_templates.whatsapp_trigger_phrase);
-          }
-          setAiEnabled(!!compData.message_templates.ai_enabled);
-          setAiPrompt(compData.message_templates.ai_prompt || 'Você é um atendente simpático da nossa empresa.');
-          setAiApiKey(compData.message_templates.ai_api_key || '');
-        }
       }
 
-      // 2. Se for admin, pega a equipe
       if (role === 'admin') {
         const { data: teamData } = await supabase.from('user_roles').select('*').eq('company_id', compId);
         if (teamData) setTeamMembers(teamData);
@@ -769,8 +767,9 @@ export default function App({ session }) {
 
   const saveTemplates = async () => {
     try {
-      if (companyId) {
-        const { error } = await supabase.from('companies').update({ message_templates: messageTemplates }).eq('id', companyId);
+      const activeId = userRole === 'superadmin' ? selectedConfigCompanyId : companyId;
+      if (activeId) {
+        const { error } = await supabase.from('companies').update({ message_templates: messageTemplates }).eq('id', activeId);
         if (error) throw error;
         alert('Mensagens salvas com sucesso!');
         setShowTemplateModal(false);
@@ -782,13 +781,18 @@ export default function App({ session }) {
 
   const handleSaveAiSettings = async () => {
     try {
+      const activeId = userRole === 'superadmin' ? selectedConfigCompanyId : companyId;
+      if (!activeId) {
+        alert('Nenhuma empresa ativa selecionada.');
+        return;
+      }
       const newTemplates = { 
         ...messageTemplates, 
         ai_enabled: aiEnabled,
         ai_prompt: aiPrompt,
         ai_api_key: aiApiKey
       };
-      const { error } = await supabase.from('companies').update({ message_templates: newTemplates }).eq('id', companyId);
+      const { error } = await supabase.from('companies').update({ message_templates: newTemplates }).eq('id', activeId);
       if (error) throw error;
       setMessageTemplates(newTemplates);
       alert('Configurações da IA de Atendimento salvas com sucesso!');
@@ -823,8 +827,10 @@ export default function App({ session }) {
   };
 
   const handleSaveTrigger = async () => {
+    const activeId = userRole === 'superadmin' ? selectedConfigCompanyId : companyId;
+    if (!activeId) return;
     const newTemplates = { ...messageTemplates, whatsapp_trigger_phrase: triggerPhrase };
-    await supabase.from('companies').update({ message_templates: newTemplates }).eq('id', companyId);
+    await supabase.from('companies').update({ message_templates: newTemplates }).eq('id', activeId);
     setMessageTemplates(newTemplates);
     alert('Frase e Link atualizados com sucesso!');
   };
@@ -2015,7 +2021,22 @@ export default function App({ session }) {
             </div>
           </div>
 
-          {waConnected && userRole === 'admin' && (
+          {userRole === 'superadmin' && (
+            <div className="bg-white p-6 rounded-xl shadow-sm shadow-indigo-900/5 border border-slate-100 text-left space-y-3">
+              <label className="block text-xs font-bold text-slate-500 uppercase">Empresa a Configurar (Visão Master)</label>
+              <select
+                value={selectedConfigCompanyId}
+                onChange={(e) => setSelectedConfigCompanyId(e.target.value)}
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm font-semibold focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all cursor-pointer"
+              >
+                {allCompanies.map(c => (
+                  <option key={c.id} value={c.id}>{c.name}</option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          {(waConnected || userRole === 'superadmin') && (
             <div className="bg-white p-8 rounded-xl shadow-sm shadow-indigo-900/5 border border-slate-100 text-left space-y-5 animate-fade-in">
               <h2 className="text-xl font-black text-slate-800 flex items-center gap-2">
                 🤖 Inteligência Artificial (Atendente Virtual)
