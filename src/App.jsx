@@ -1565,22 +1565,14 @@ export default function App({ session }) {
               const msg = campMsg.trim() ? campMsg.replace(/\{\{nome\}\}/gi, contact.nome) : '';
               
               if (campAttachment) {
-                if (campAttachment.type === 'audio') {
-                  if (msg) {
-                    await sendWahaMessage(contact.telefone, msg);
-                    await new Promise(r => setTimeout(r, 1000));
-                  }
-                  await sendWahaAudio(contact.telefone, campAttachment.base64);
-                } else {
-                  await sendWahaMedia(
-                    contact.telefone,
-                    campAttachment.type,
-                    campAttachment.mimetype,
-                    campAttachment.base64,
-                    campAttachment.name,
-                    msg
-                  );
-                }
+                await sendWahaMedia(
+                  contact.telefone,
+                  campAttachment.type,
+                  campAttachment.mimetype,
+                  campAttachment.base64,
+                  campAttachment.name,
+                  msg
+                );
               } else {
                 if (msg) {
                   await sendWahaMessage(contact.telefone, msg);
@@ -1718,56 +1710,29 @@ export default function App({ session }) {
                         reader.readAsDataURL(file);
                       }}
                       className="hidden"
-                      accept="audio/*,image/*,video/*,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/zip"
+                      accept="image/*,video/*,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/zip"
                     />
                     
                     {!campAttachment ? (
-                      <div className="grid grid-cols-2 gap-3">
-                        <label
-                          htmlFor="campFile"
-                          className="flex flex-col items-center justify-center p-4 border-2 border-dashed border-slate-200 hover:border-orange-400 rounded-xl cursor-pointer bg-slate-50 hover:bg-orange-50/20 transition-all text-center h-28"
-                        >
-                          <span className="text-2xl mb-1">📎</span>
-                          <span className="text-xs font-bold text-slate-600">Enviar Arquivo</span>
-                          <span className="text-[10px] text-slate-400 mt-0.5">PDF, Imagem (Max 5MB)</span>
-                        </label>
-                        
-                        {!isRecording ? (
-                          <button
-                            type="button"
-                            onClick={startRecording}
-                            className="flex flex-col items-center justify-center p-4 border-2 border-dashed border-slate-200 hover:border-red-400 rounded-xl bg-slate-50 hover:bg-red-50/20 transition-all text-center h-28"
-                          >
-                            <span className="text-2xl mb-1 text-red-500">🎤</span>
-                            <span className="text-xs font-bold text-slate-600">Gravar Áudio</span>
-                            <span className="text-[10px] text-slate-400 mt-0.5">Grave sua voz diretamente</span>
-                          </button>
-                        ) : (
-                          <button
-                            type="button"
-                            onClick={stopRecording}
-                            className="flex flex-col items-center justify-center p-4 border-2 border-red-300 rounded-xl bg-red-50 text-center h-28 animate-pulse"
-                          >
-                            <span className="text-2xl mb-1 text-red-600">🔴</span>
-                            <span className="text-xs font-bold text-red-700">Gravando...</span>
-                            <span className="text-sm font-black text-red-800 mt-1 font-mono">
-                              {Math.floor(recordingSeconds / 60)}:{(recordingSeconds % 60).toString().padStart(2, '0')}
-                            </span>
-                            <span className="text-[9px] text-red-500 font-bold mt-1 uppercase">Clique para parar</span>
-                          </button>
-                        )}
-                      </div>
+                      <label
+                        htmlFor="campFile"
+                        className="flex flex-col items-center justify-center p-4 border-2 border-dashed border-slate-200 hover:border-orange-400 rounded-xl cursor-pointer bg-slate-50 hover:bg-orange-50/20 transition-all text-center h-28 w-full"
+                      >
+                        <span className="text-2xl mb-1">📎</span>
+                        <span className="text-xs font-bold text-slate-600">Enviar Arquivo</span>
+                        <span className="text-[10px] text-slate-400 mt-0.5">PDF, Imagem, Vídeo (Max 5MB)</span>
+                      </label>
                     ) : (
                       <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-3">
                         <div className="flex items-center justify-between">
                           <div className="flex items-center gap-2.5 min-w-0">
                             <span className="text-2xl">
-                              {campAttachment.type === 'audio' ? '🎤' : campAttachment.type === 'image' ? '🖼️' : '📄'}
+                              {campAttachment.type === 'image' ? '🖼️' : '📄'}
                             </span>
                             <div className="min-w-0">
                               <p className="text-xs font-bold text-slate-700 truncate">{campAttachment.name}</p>
                               <p className="text-[10px] text-slate-500 font-medium">
-                                {(campAttachment.size / 1024).toFixed(1)} KB {campAttachment.type === 'audio' && ' · Envia como áudio gravado'}
+                                {(campAttachment.size / 1024).toFixed(1)} KB
                               </p>
                             </div>
                           </div>
@@ -1783,12 +1748,6 @@ export default function App({ session }) {
                             Remover
                           </button>
                         </div>
-                        
-                        {campAttachment.type === 'audio' && (
-                          <div className="pt-2 border-t border-slate-200/60 flex items-center justify-center">
-                            <audio src={campAttachment.base64} controls className="w-full h-10" />
-                          </div>
-                        )}
                       </div>
                     )}
                   </div>
