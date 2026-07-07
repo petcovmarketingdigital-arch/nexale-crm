@@ -80,9 +80,10 @@ export default function Auth({ onLogin }) {
       <div className="bg-white p-8 rounded-2xl shadow-xl max-w-md w-full border border-slate-100">
         <div className="text-center mb-8">
           <div className="w-20 h-20 mx-auto mb-4 flex items-center justify-center">
-            <img src="/favicon.svg" alt="Nexale Logo" className="w-full h-full object-contain drop-shadow-xl" />
+            <img src="/logo-nexale.jpg" alt="Nexale Logo" className="w-full h-full object-cover rounded-2xl shadow-md" />
           </div>
           <h1 className="text-2xl font-bold text-slate-800">Nexale CRM</h1>
+
           <p className="text-sm text-slate-500 mt-2">
             {isForgot ? 'Recupere o acesso à sua conta' : (isLogin ? 'Faça login para acessar sua empresa' : 'Crie sua conta para começar')}
           </p>

@@ -1333,9 +1333,10 @@ export default function App({ session }) {
       <div className="flex flex-col xl:flex-row justify-between items-start xl:items-center mb-8 gap-4 bg-white p-4 rounded-xl shadow-sm shadow-indigo-900/5 border border-slate-100">
         <div>
           <h1 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
-            <img src="/favicon.svg" alt="Nexale Logo" className="h-7 w-7" />
+            <img src="/logo-nexale.jpg" alt="Nexale Logo" className="h-8 w-8 rounded-lg object-cover shadow-sm border border-slate-100" />
             Nexale CRM
           </h1>
+
           <p className="text-sm text-slate-500 mt-1 flex items-center gap-2">
             Gestão Inteligente
             <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${userRole === 'admin' ? 'bg-indigo-100 text-indigo-700' : 'bg-slate-100 text-slate-600'}`}>
