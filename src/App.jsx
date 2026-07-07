@@ -64,6 +64,54 @@ const compressImage = (file, maxWidth = 1200, maxHeight = 1200, quality = 0.7) =
   });
 };
 
+const NICHOS_CONFIG = {
+  geral: {
+    label: 'Geral / Padrão',
+    fields: [],
+    cardSummary: () => null
+  },
+  imobiliaria: {
+    label: 'Imobiliária & Corretores',
+    fields: [
+      { key: 'tipo_imovel', label: 'Tipo de Imóvel', type: 'select', options: ['Casa', 'Apartamento', 'Terreno', 'Sobrado', 'Comercial'] },
+      { key: 'valor_pretendido', label: 'Valor do Imóvel (R$)', type: 'number', placeholder: 'Ex: 450000' },
+      { key: 'renda_cliente', label: 'Renda do Cliente (R$)', type: 'number', placeholder: 'Ex: 8000' },
+      { key: 'quartos', label: 'Qtd. Quartos', type: 'text', placeholder: 'Ex: 3 quartos' }
+    ],
+    cardSummary: (data) => {
+      if (!data.tipo_imovel && !data.valor_pretendido) return null;
+      const valor = data.valor_pretendido ? `R$ ${(Number(data.valor_pretendido)/1000).toFixed(0)}k` : '';
+      return `🏠 ${data.tipo_imovel || 'Imóvel'} ${valor}`;
+    }
+  },
+  veiculos: {
+    label: 'Concessionária / Loja de Carros',
+    fields: [
+      { key: 'carro_interesse', label: 'Carro de Interesse', type: 'text', placeholder: 'Ex: Honda Civic' },
+      { key: 'ano_modelo', label: 'Ano / Modelo', type: 'text', placeholder: 'Ex: 2020/2021' },
+      { key: 'carro_troca', label: 'Carro na Troca?', type: 'select', options: ['Não', 'Sim (Mesmo valor)', 'Sim (Menor valor)', 'Sim (Maior valor)'] },
+      { key: 'valor_entrada', label: 'Valor de Entrada (R$)', type: 'number', placeholder: 'Ex: 20000' }
+    ],
+    cardSummary: (data) => {
+      if (!data.carro_interesse) return null;
+      const entrada = data.valor_entrada ? ` · Entr: R$ ${(Number(data.valor_entrada)/1000).toFixed(0)}k` : '';
+      return `🚗 ${data.carro_interesse}${entrada}`;
+    }
+  },
+  b2b: {
+    label: 'Vendas B2B / Serviços',
+    fields: [
+      { key: 'cargo_contato', label: 'Cargo do Contato', type: 'text', placeholder: 'Ex: Diretor Comercial' },
+      { key: 'tamanho_empresa', label: 'Tamanho da Empresa', type: 'select', options: ['1-10 func.', '11-50 func.', '51-200 func.', '200+ func.'] },
+      { key: 'faturamento', label: 'Faturamento Anual', type: 'text', placeholder: 'Ex: Até 1M' }
+    ],
+    cardSummary: (data) => {
+      if (!data.cargo_contato && !data.tamanho_empresa) return null;
+      return `🏢 ${data.cargo_contato || ''} (${data.tamanho_empresa || ''})`;
+    }
+  }
+};
+
 export default function App({ session }) {
   const [columns, setColumns] = useState(INITIAL_COLUMNS);
   const [showConfigModal, setShowConfigModal] = useState(false);
@@ -141,6 +189,7 @@ export default function App({ session }) {
   const [aiApiKey, setAiApiKey] = useState('');
   const [activeCardAiPaused, setActiveCardAiPaused] = useState(false);
   const [selectedConfigCompanyId, setSelectedConfigCompanyId] = useState('');
+  const [companyNiche, setCompanyNiche] = useState('geral');
 
   const [formData, setFormData] = useState({
     empresa: '',
@@ -152,7 +201,8 @@ export default function App({ session }) {
     valor: '',
     temperatura: 'Frio',
     dataRetorno: '',
-    notas: ''
+    notas: '',
+    dados_nicho: {}
   });
 
   useEffect(() => {
@@ -197,12 +247,13 @@ export default function App({ session }) {
     }
 
     if (compId) {
-      const { data: compData } = await supabase.from('companies').select('invite_code, subscription_status, trial_ends_at, phone').eq('id', compId).single();
+      const { data: compData } = await supabase.from('companies').select('invite_code, subscription_status, trial_ends_at, phone, nicho').eq('id', compId).single();
       if (compData) {
         if (role === 'admin') setInviteCode(compData.invite_code);
         setSubscriptionStatus(compData.subscription_status);
         setTrialEndsAt(compData.trial_ends_at);
         setCompanyPhone(compData.phone || '');
+        setCompanyNiche(compData.nicho || 'geral');
       }
 
       if (role === 'admin') {
@@ -257,7 +308,8 @@ export default function App({ session }) {
           dataRetorno: dbLead.data_retorno,
           data_movimentacao: dbLead.data_movimentacao || dbLead.data_criacao,
           origem: dbLead.origem || 'Novo Lead',
-          ai_paused: !!dbLead.ai_paused
+          ai_paused: !!dbLead.ai_paused,
+          dados_nicho: dbLead.dados_nicho || {}
         };
         const targetCol = cols.find(c => c.id === dbLead.coluna_id) || cols[0];
         targetCol.cards.push(lead);
@@ -386,7 +438,8 @@ export default function App({ session }) {
             valor: valorOportunidade,
             status_amostra: formData.temperatura,
             data_retorno: formData.dataRetorno || null,
-            notas: formData.notas
+            notas: formData.notas,
+            dados_nicho: formData.dados_nicho || {}
           }).eq('id', editingCardId);
           
           if (error) throw error;
@@ -407,11 +460,12 @@ export default function App({ session }) {
             coluna_id: 'leads',
             data_retorno: formData.dataRetorno || null,
             notas: formData.notas,
-            origem: 'Novo Lead'
+            origem: 'Novo Lead',
+            dados_nicho: formData.dados_nicho || {}
           }]).select();
           
           if (error) throw error;
-
+ 
           if (data && data.length > 0) {
             const dbLead = data[0];
             const newCard = {
@@ -428,7 +482,8 @@ export default function App({ session }) {
               dataRetorno: dbLead.data_retorno,
               notas: dbLead.notas,
               data_movimentacao: dbLead.data_movimentacao,
-              origem: dbLead.origem || 'Novo Lead'
+              origem: dbLead.origem || 'Novo Lead',
+              dados_nicho: dbLead.dados_nicho || {}
             };
             setColumns(columns.map(col => {
               if (col.id === 'leads') {
@@ -439,8 +494,8 @@ export default function App({ session }) {
           }
         }
       }
-
-      setFormData({ empresa: '', contato: '', telefone: '', email: '', tipo: 'B2B', observacao: '', valor: '', temperatura: 'Frio', dataRetorno: '', notas: '' });
+ 
+      setFormData({ empresa: '', contato: '', telefone: '', email: '', tipo: 'B2B', observacao: '', valor: '', temperatura: 'Frio', dataRetorno: '', notas: '', dados_nicho: {} });
       setEditingCardId(null);
       setLeadNotes([]);
       setShowModal(false);
@@ -488,7 +543,8 @@ export default function App({ session }) {
       valor: card.valor || '',
       temperatura: card.temperatura || 'Frio',
       dataRetorno: card.dataRetorno ? new Date(card.dataRetorno).toISOString().slice(0, 16) : '',
-      notas: card.notas || ''
+      notas: card.notas || '',
+      dados_nicho: card.dados_nicho || {}
     });
     setActiveCardAiPaused(!!card.ai_paused);
     setEditingCardId(card.id);
@@ -656,6 +712,50 @@ export default function App({ session }) {
   useEffect(() => {
     if (showConfigModal) checkSession();
   }, [showConfigModal]);
+
+  // Load company settings when activeId changes
+  useEffect(() => {
+    const loadCompanySettings = async () => {
+      const activeId = userRole === 'superadmin' ? selectedConfigCompanyId : companyId;
+      if (!activeId) return;
+
+      try {
+        const { data, error } = await supabase
+          .from('companies')
+          .select('nicho, message_templates')
+          .eq('id', activeId)
+          .single();
+
+        if (!error && data) {
+          setCompanyNiche(data.nicho || 'geral');
+          if (data.message_templates) {
+            setMessageTemplates(data.message_templates);
+            if (data.message_templates.ai_enabled !== undefined) setAiEnabled(!!data.message_templates.ai_enabled);
+            if (data.message_templates.ai_prompt !== undefined) setAiPrompt(data.message_templates.ai_prompt || 'Você é um atendente simpático da nossa empresa.');
+            if (data.message_templates.ai_api_key !== undefined) setAiApiKey(data.message_templates.ai_api_key || '');
+          }
+        }
+      } catch (err) {
+        console.error('Error loading company settings:', err);
+      }
+    };
+
+    loadCompanySettings();
+  }, [selectedConfigCompanyId, companyId, userRole]);
+
+  const handleUpdateCompanyNiche = async (newNiche) => {
+    setCompanyNiche(newNiche);
+    const activeId = userRole === 'superadmin' ? selectedConfigCompanyId : companyId;
+    if (activeId) {
+      const { error } = await supabase.from('companies').update({ nicho: newNiche }).eq('id', activeId);
+      if (error) {
+        console.error('Error updating company niche:', error.message);
+      } else {
+        // Recarregar leads para aplicar nova lógica de resumo/cards
+        fetchLeads(userRole, selectedSeller, companyId, customTitles);
+      }
+    }
+  };
 
   // Helper: Evolution API uses plain numbers with country code
   const sendWahaMessage = async (phoneNumber, text) => {
@@ -1436,6 +1536,19 @@ export default function App({ session }) {
                             </div>
                           )}
 
+                          {/* Resumo do Nicho se houver */}
+                          {companyNiche !== 'geral' && NICHOS_CONFIG[companyNiche] && (
+                            (() => {
+                              const summary = NICHOS_CONFIG[companyNiche].cardSummary(card.dados_nicho || {});
+                              if (!summary) return null;
+                              return (
+                                <div className="mb-3 px-2 py-1 bg-slate-50 border border-slate-200 text-slate-700 rounded-md text-[10px] font-semibold w-fit truncate max-w-full">
+                                  {summary}
+                                </div>
+                              );
+                            })()
+                          )}
+
                           {/* 🔥 Badge de dias parado */}
                           {diasParado !== null && (
                             <div className={`mb-3 px-2 py-1 rounded-md text-[10px] font-bold flex items-center gap-1 w-fit ${
@@ -2126,6 +2239,31 @@ export default function App({ session }) {
               </button>
             </div>
           </div>
+
+          <div className="bg-white p-8 rounded-xl shadow-sm shadow-indigo-900/5 border border-slate-100 text-left space-y-5">
+            <h2 className="text-xl font-black text-slate-800 flex items-center gap-2">
+              🏢 Perfil e Nicho da Empresa
+            </h2>
+            <p className="text-sm text-slate-500">
+              Configure o segmento de atuação da sua empresa para adaptar o formulário de cadastro de leads e resumos de cartões no Kanban.
+            </p>
+            
+            <div className="space-y-2">
+              <label className="block text-xs font-bold text-slate-600 uppercase">Nicho de Atuação (Funil de Vendas)</label>
+              <select
+                value={companyNiche}
+                onChange={(e) => handleUpdateCompanyNiche(e.target.value)}
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm font-semibold focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all cursor-pointer"
+              >
+                {Object.entries(NICHOS_CONFIG).map(([key, cfg]) => (
+                  <option key={key} value={key}>{cfg.label}</option>
+                ))}
+              </select>
+              <p className="text-[10px] text-slate-400">
+                Isso altera dinamicamente os campos de captação na ficha dos Leads e a exibição de tags no funil.
+              </p>
+            </div>
+          </div>
         </div>
       )}
 
@@ -2199,6 +2337,53 @@ export default function App({ session }) {
                     <input type="text" value={formData.notas} onChange={e => setFormData({...formData, notas: e.target.value})} className="w-full bg-yellow-50 border border-yellow-200 rounded-xl p-3 text-sm focus:bg-white focus:outline-none focus:ring-2 focus:ring-yellow-500 transition-all" placeholder="Ex: Ligar na terça..." />
                   </div>
                 </div>
+
+                {companyNiche !== 'geral' && NICHOS_CONFIG[companyNiche] && NICHOS_CONFIG[companyNiche].fields.length > 0 && (
+                  <div className="bg-slate-50 border border-slate-100 rounded-xl p-4 space-y-4">
+                    <p className="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1">
+                      📊 Dados do Nicho: {NICHOS_CONFIG[companyNiche].label}
+                    </p>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {NICHOS_CONFIG[companyNiche].fields.map(field => {
+                        const val = formData.dados_nicho?.[field.key] || '';
+                        const updateNicheVal = (newVal) => {
+                          setFormData(prev => ({
+                            ...prev,
+                            dados_nicho: {
+                              ...prev.dados_nicho,
+                              [field.key]: newVal
+                            }
+                          }));
+                        };
+                        return (
+                          <div key={field.key} className="text-left">
+                            <label className="block text-xs font-bold text-slate-600 mb-1">{field.label}</label>
+                            {field.type === 'select' ? (
+                              <select
+                                value={val}
+                                onChange={e => updateNicheVal(e.target.value)}
+                                className="w-full bg-white border border-slate-200 rounded-xl p-3 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
+                              >
+                                <option value="">Selecione...</option>
+                                {field.options.map(opt => (
+                                  <option key={opt} value={opt}>{opt}</option>
+                                ))}
+                              </select>
+                            ) : (
+                              <input
+                                type={field.type}
+                                value={val}
+                                onChange={e => updateNicheVal(e.target.value)}
+                                placeholder={field.placeholder}
+                                className="w-full bg-white border border-slate-200 rounded-xl p-3 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
+                              />
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
 
                 <div className="pt-2">
                   <button type="button" onClick={() => setShowAdvanced(!showAdvanced)} className="text-xs font-bold text-indigo-500 flex items-center gap-1 hover:text-indigo-700 transition-colors">
