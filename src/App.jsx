@@ -109,6 +109,83 @@ const NICHOS_CONFIG = {
       if (!data.cargo_contato && !data.tamanho_empresa) return null;
       return `🏢 ${data.cargo_contato || ''} (${data.tamanho_empresa || ''})`;
     }
+  },
+  clinicas: {
+    label: 'Clínicas / Estética / Consultórios',
+    fields: [
+      { key: 'procedimento', label: 'Procedimento / Serviço', type: 'select', options: ['Botox', 'Preenchimento', 'Fisioterapia', 'Consulta Médica', 'Nutrição', 'Odontologia', 'Outros'] },
+      { key: 'profissional', label: 'Profissional / Doutor(a)', type: 'text', placeholder: 'Ex: Dr. Silva' },
+      { key: 'data_consulta', label: 'Data/Hora de Agendamento', type: 'text', placeholder: 'Ex: Terça 14h' }
+    ],
+    cardSummary: (data) => {
+      if (!data.procedimento) return null;
+      const prof = data.profissional ? ` · ${data.profissional}` : '';
+      return `🩺 ${data.procedimento}${prof}`;
+    }
+  },
+  escolas: {
+    label: 'Escolas / Cursos / Educação',
+    fields: [
+      { key: 'curso_interesse', label: 'Curso de Interesse', type: 'text', placeholder: 'Ex: Inglês Intensivo' },
+      { key: 'periodo', label: 'Período', type: 'select', options: ['Manhã', 'Tarde', 'Noite', 'Sábado', 'EAD'] },
+      { key: 'aluno_nome', label: 'Nome do Aluno', type: 'text', placeholder: 'Ex: João da Silva' }
+    ],
+    cardSummary: (data) => {
+      if (!data.curso_interesse) return null;
+      const aluno = data.aluno_nome ? ` · Aluno: ${data.aluno_nome}` : '';
+      return `🎓 ${data.curso_interesse}${aluno}`;
+    }
+  },
+  eventos: {
+    label: 'Eventos / Festas / Buffet',
+    fields: [
+      { key: 'tipo_evento', label: 'Tipo de Evento', type: 'select', options: ['Casamento', 'Aniversário', 'Corporativo', 'Formatura', 'Infantil', 'Outros'] },
+      { key: 'data_evento', label: 'Data do Evento', type: 'text', placeholder: 'Ex: 12/12/2026' },
+      { key: 'qtd_convidados', label: 'Quantidade de Convidados', type: 'number', placeholder: 'Ex: 150' }
+    ],
+    cardSummary: (data) => {
+      if (!data.tipo_evento) return null;
+      const conv = data.qtd_convidados ? ` · ${data.qtd_convidados} conv.` : '';
+      return `🎉 ${data.tipo_evento}${conv}`;
+    }
+  },
+  advocacia: {
+    label: 'Advocacia / Escritório Jurídico',
+    fields: [
+      { key: 'area_juridica', label: 'Área do Direito', type: 'select', options: ['Civil', 'Trabalhista', 'Família', 'Previdenciário', 'Tributário', 'Penal', 'Outros'] },
+      { key: 'numero_processo', label: 'Número do Processo', type: 'text', placeholder: 'Ex: 5001234-xx' },
+      { key: 'parte_contraria', label: 'Parte Contrária', type: 'text', placeholder: 'Ex: Banco XYZ' }
+    ],
+    cardSummary: (data) => {
+      if (!data.area_juridica) return null;
+      const proc = data.numero_processo ? ` · Proc: ${data.numero_processo}` : '';
+      return `⚖️ ${data.area_juridica}${proc}`;
+    }
+  },
+  seguros: {
+    label: 'Seguros / Financiamentos / Consórcio',
+    fields: [
+      { key: 'tipo_produto', label: 'Produto', type: 'select', options: ['Seguro Auto', 'Seguro de Vida', 'Seguro Residencial', 'Consórcio Imobiliário', 'Consórcio Veículos', 'Financiamento Auto', 'Outros'] },
+      { key: 'valor_credito', label: 'Valor do Crédito / Apólice (R$)', type: 'number', placeholder: 'Ex: 150000' },
+      { key: 'seguradora_parceira', label: 'Seguradora / Administradora', type: 'text', placeholder: 'Ex: Porto Seguro' }
+    ],
+    cardSummary: (data) => {
+      if (!data.tipo_produto) return null;
+      const valor = data.valor_credito ? ` · R$ ${(Number(data.valor_credito)/1000).toFixed(0)}k` : '';
+      return `💰 ${data.tipo_produto}${valor}`;
+    }
+  },
+  moveis: {
+    label: 'Móveis Planejados / Construção / Reformas',
+    fields: [
+      { key: 'ambientes', label: 'Ambientes a Planejar', type: 'text', placeholder: 'Ex: Cozinha, Closet' },
+      { key: 'planta_disponivel', label: 'Possui Planta?', type: 'select', options: ['Sim', 'Não', 'Em Desenvolvimento'] },
+      { key: 'prazo_desejado', label: 'Prazo Desejado', type: 'text', placeholder: 'Ex: 45 dias' }
+    ],
+    cardSummary: (data) => {
+      if (!data.ambientes) return null;
+      return `🪚 ${data.ambientes}`;
+    }
   }
 };
 
@@ -1208,6 +1285,26 @@ export default function App({ session }) {
               <option value="Captação B2B">Captação B2B</option>
               <option value="Link de WhatsApp">Link de WhatsApp</option>
             </select>
+          </div>
+
+          {/* Seletor de Nicho na barra de cabeçalho */}
+          <div className="bg-indigo-50 border border-indigo-100 p-1.5 rounded-lg flex items-center shadow-sm shadow-indigo-900/5">
+            <span className="text-[11px] text-indigo-700 font-bold ml-2 mr-2 uppercase">Segmento/Nicho:</span>
+            {userRole === 'admin' || userRole === 'superadmin' ? (
+              <select
+                value={companyNiche}
+                onChange={(e) => handleUpdateCompanyNiche(e.target.value)}
+                className="bg-white border-none rounded text-sm p-1.5 font-semibold text-slate-700 focus:ring-2 focus:ring-indigo-500 cursor-pointer shadow-sm shadow-indigo-900/5 max-w-[180px] truncate"
+              >
+                {Object.entries(NICHOS_CONFIG).map(([key, cfg]) => (
+                  <option key={key} value={key}>{cfg.label}</option>
+                ))}
+              </select>
+            ) : (
+              <span className="bg-white border border-indigo-200 rounded text-xs px-2.5 py-1 font-semibold text-indigo-800 tracking-wide shadow-sm shadow-indigo-900/5">
+                {NICHOS_CONFIG[companyNiche]?.label || 'Geral'}
+              </span>
+            )}
           </div>
 
           {/* SuperAdmin: sem seletor de empresa — tem Kanban próprio */}
