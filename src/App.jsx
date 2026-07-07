@@ -268,6 +268,7 @@ export default function App({ session }) {
   const [selectedConfigCompanyId, setSelectedConfigCompanyId] = useState('');
   const [companyNiche, setCompanyNiche] = useState('geral');
   const [companyLogoUrl, setCompanyLogoUrl] = useState('');
+  const [isUploadingLogo, setIsUploadingLogo] = useState(false);
 
 
   const [formData, setFormData] = useState({
@@ -865,7 +866,60 @@ export default function App({ session }) {
     }
   };
 
+  const handleUploadLogo = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    if (!file.type.startsWith('image/')) {
+      alert('Por favor, selecione apenas arquivos de imagem.');
+      return;
+    }
+
+    // Limita tamanho a 3MB
+    if (file.size > 3 * 1024 * 1024) {
+      alert('A imagem do logotipo deve ter no máximo 3MB.');
+      return;
+    }
+
+    setIsUploadingLogo(true);
+    const activeId = userRole === 'superadmin' ? selectedConfigCompanyId : companyId;
+    if (!activeId) {
+      alert('Empresa não identificada.');
+      setIsUploadingLogo(false);
+      return;
+    }
+
+    try {
+      const fileExt = file.name.split('.').pop();
+      const fileName = `logo_${activeId}_${Date.now()}.${fileExt}`;
+
+      // Upload do arquivo para o bucket 'logos'
+      const { data, error } = await supabase.storage
+        .from('logos')
+        .upload(fileName, file, { cacheControl: '3600', upsert: true });
+
+      if (error) throw error;
+
+      // Obtém a URL pública
+      const { data: publicUrlData } = supabase.storage
+        .from('logos')
+        .getPublicUrl(fileName);
+
+      const publicUrl = publicUrlData.publicUrl;
+
+      // Salva no banco de dados e atualiza o estado
+      await handleUpdateCompanyLogoUrl(publicUrl);
+      alert('✅ Logotipo enviado e salvo com sucesso!');
+    } catch (err) {
+      console.error('Erro no upload do logotipo:', err);
+      alert(`Erro ao enviar logotipo: ${err.message || err}`);
+    } finally {
+      setIsUploadingLogo(false);
+    }
+  };
+
   const handleUpdateCompanyNiche = async (newNiche) => {
+
 
     setCompanyNiche(newNiche);
     const activeId = userRole === 'superadmin' ? selectedConfigCompanyId : companyId;
@@ -2409,25 +2463,59 @@ export default function App({ session }) {
             </div>
 
             <div className="space-y-2 pt-4 border-t border-slate-100">
-              <label className="block text-xs font-bold text-slate-600 uppercase">Logotipo da Empresa (URL da Imagem)</label>
-              <div className="flex gap-2">
+              <label className="block text-xs font-bold text-slate-600 uppercase">Logotipo da Empresa</label>
+              
+              <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center py-2">
+                {/* Preview e Botão de Envio */}
+                <div className="flex items-center gap-3">
+                  <div className="w-16 h-16 rounded-2xl border-2 border-dashed border-slate-200 flex items-center justify-center bg-slate-50 shrink-0 overflow-hidden relative">
+                    {companyLogoUrl ? (
+                      <img src={companyLogoUrl} alt="Logo" className="max-w-full max-h-full object-contain" />
+                    ) : (
+                      <span className="text-xl">🏢</span>
+                    )}
+                  </div>
+                  
+                  <div>
+                    <label className="bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold text-xs py-2.5 px-4 rounded-xl cursor-pointer transition-colors inline-block">
+                      {isUploadingLogo ? 'Enviando...' : '📤 Escolher Imagem (Upload)'}
+                      <input
+                        type="file"
+                        accept="image/*"
+                        onChange={handleUploadLogo}
+                        className="hidden"
+                        disabled={isUploadingLogo}
+                      />
+                    </label>
+                    {companyLogoUrl && (
+                      <button
+                        onClick={() => handleUpdateCompanyLogoUrl('')}
+                        className="block mt-1.5 text-[10px] font-bold text-red-500 hover:text-red-700 transition-colors"
+                      >
+                        Remover logotipo
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Opção para URL também */}
+              <div className="space-y-1 pt-2">
+                <span className="block text-[10px] font-bold text-slate-400 uppercase">Ou cole o link direto da imagem</span>
                 <input
                   type="text"
                   placeholder="https://suaempresa.com/logo.png"
                   value={companyLogoUrl}
                   onChange={(e) => handleUpdateCompanyLogoUrl(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all font-mono"
                 />
-                {companyLogoUrl && (
-                  <div className="w-12 h-12 rounded-xl border border-slate-200 flex items-center justify-center bg-slate-50 shrink-0 overflow-hidden">
-                    <img src={companyLogoUrl} alt="Logo" className="max-w-full max-h-full object-contain" onError={(e) => { e.target.style.display = 'none'; }} />
-                  </div>
-                )}
               </div>
+
               <p className="text-[10px] text-slate-400">
-                Insira o link direto de uma imagem (PNG, JPG, SVG) para personalizar o topo das páginas de captação.
+                Selecione uma imagem (PNG, JPG, SVG) com até 3MB. Ela aparecerá no topo da sua Landing Page de captação.
               </p>
             </div>
+
 
           </div>
         </div>
