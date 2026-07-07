@@ -173,24 +173,24 @@ export default function CaptacaoPage({ vendedorId }) {
   const [nichoFields, setNichoFields] = useState({});
   const [formError, setFormError] = useState('');
 
-  // Carrega dados do vendedor e empresa
+  // Carrega dados do vendedor e empresa via user_roles
   useEffect(() => {
     async function load() {
       setLoading(true);
-      const { data: profile, error: pErr } = await supabase
-        .from('profiles')
-        .select('id, full_name, email, company_id, avatar_url')
+      const { data: userRole, error: pErr } = await supabase
+        .from('user_roles')
+        .select('id, email, role, company_id, name')
         .eq('id', vendedorId)
         .single();
 
-      if (pErr || !profile) { setNotFound(true); setLoading(false); return; }
-      setVendedor(profile);
+      if (pErr || !userRole) { setNotFound(true); setLoading(false); return; }
+      setVendedor(userRole);
 
-      if (profile.company_id) {
+      if (userRole.company_id) {
         const { data: comp } = await supabase
           .from('companies')
           .select('id, name, phone, nicho, logo_url')
-          .eq('id', profile.company_id)
+          .eq('id', userRole.company_id)
           .single();
 
         if (comp) { setEmpresa(comp); setNicho(comp.nicho || 'geral'); }
@@ -329,7 +329,7 @@ export default function CaptacaoPage({ vendedorId }) {
             <h1 className="text-white text-3xl font-black leading-tight mb-2">{tema.hero}</h1>
             {empresa?.name && (
               <p className="text-white/50 text-sm font-medium">
-                {empresa.name}{vendedor?.full_name && ` · ${vendedor.full_name}`}
+                {empresa.name}{vendedor?.name && ` · ${vendedor.name}`}
               </p>
             )}
             <p className="text-white/60 text-sm mt-3 leading-relaxed">{tema.subtitle}</p>
