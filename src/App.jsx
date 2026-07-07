@@ -1088,7 +1088,7 @@ export default function App({ session }) {
                 onClick={() => setCurrentView('ai_config')}
                 className={`px-3 py-1.5 rounded-md text-sm font-bold transition-all ${currentView === 'ai_config' ? 'bg-indigo-600 text-white shadow-sm shadow-indigo-900/5' : 'text-indigo-600 hover:text-indigo-700 border border-indigo-200/50 bg-indigo-50/50'}`}
               >
-                🤖 Atendente IA
+                🤖 Atendimento por IA
               </button>
               <button 
                 onClick={() => setCurrentView('campanha')}
