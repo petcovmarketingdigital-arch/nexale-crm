@@ -17,6 +17,53 @@ const COLORS = ['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#14B8A6'
 import SuperAdminPanel from './SuperAdminPanel';
 import SuperAdminKanban from './SuperAdminKanban';
 
+const compressImage = (file, maxWidth = 1200, maxHeight = 1200, quality = 0.7) => {
+  return new Promise((resolve) => {
+    if (!file.type.startsWith('image/')) {
+      resolve(file);
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        let width = img.width;
+        let height = img.height;
+
+        if (width > maxWidth || height > maxHeight) {
+          if (width > height) {
+            height = Math.round((height * maxWidth) / width);
+            width = maxWidth;
+          } else {
+            width = Math.round((width * maxHeight) / height);
+            height = maxHeight;
+          }
+        }
+
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, width, height);
+
+        canvas.toBlob((blob) => {
+          if (!blob) {
+            resolve(file);
+            return;
+          }
+          const compressedFile = new File([blob], file.name, {
+            type: file.type,
+            lastModified: Date.now(),
+          });
+          resolve(compressedFile);
+        }, file.type, quality);
+      };
+      img.src = event.target.result;
+    };
+    reader.readAsDataURL(file);
+  });
+};
+
 export default function App({ session }) {
   const [columns, setColumns] = useState(INITIAL_COLUMNS);
   const [showConfigModal, setShowConfigModal] = useState(false);
@@ -653,7 +700,7 @@ export default function App({ session }) {
     return res;
   };
 
-  const sendWahaMedia = async (phoneNumber, mediaType, mimeType, base64Media, fileName) => {
+  const sendWahaMedia = async (phoneNumber, mediaType, mimeType, base64Media, fileName, caption = "") => {
     let clean = phoneNumber.replace(/\D/g, '');
     if (clean.length === 10 || clean.length === 11) {
       clean = '55' + clean;
@@ -669,7 +716,7 @@ export default function App({ session }) {
         mimetype: mimeType,
         media: rawBase64,
         fileName: fileName,
-        caption: ""
+        caption: caption
       })
     });
     if (!res.ok) {
@@ -1190,7 +1237,7 @@ export default function App({ session }) {
                   <li className="flex items-center gap-2"><span className="text-green-500">✓</span> Funil de Vendas Kanban</li>
                   <li className="flex items-center gap-2"><span className="text-green-500">✓</span> Automação de WhatsApp</li>
                 </ul>
-                <a href="https://www.asaas.com/c/bqbwcc2hczubmdj3" target="_blank" rel="noreferrer" className="block w-full bg-slate-800 hover:bg-black text-white text-center font-bold py-3 rounded-xl transition-colors text-sm">Assinar Vendedor Solo</a>
+                <a href={`https://www.asaas.com/c/bqbwcc2hczubmdj3?email=${encodeURIComponent(session?.user?.email || '')}&mobilePhone=${encodeURIComponent(companyPhone)}`} target="_blank" rel="noreferrer" className="block w-full bg-slate-800 hover:bg-black text-white text-center font-bold py-3 rounded-xl transition-colors text-sm">Assinar Vendedor Solo</a>
               </div>
 
               {/* Pequenos Negócios */}
@@ -1204,7 +1251,7 @@ export default function App({ session }) {
                   <li className="flex items-center gap-2"><span className="text-indigo-500">🔥</span> Dashboard de Relatórios</li>
                   <li className="flex items-center gap-2"><span className="text-indigo-500">🔥</span> Suporte Prioritário</li>
                 </ul>
-                <a href="https://www.asaas.com/c/jilxk95jdvtgfv6k" target="_blank" rel="noreferrer" className="block w-full bg-gradient-to-r from-indigo-600 to-indigo-600 hover:from-indigo-700 text-white text-center font-bold py-3 rounded-xl shadow-lg shadow-indigo-600/30 transition-all text-sm transform hover:-translate-y-0.5">Assinar Pequenos Negócios</a>
+                <a href={`https://www.asaas.com/c/jilxk95jdvtgfv6k?email=${encodeURIComponent(session?.user?.email || '')}&mobilePhone=${encodeURIComponent(companyPhone)}`} target="_blank" rel="noreferrer" className="block w-full bg-gradient-to-r from-indigo-600 to-indigo-600 hover:from-indigo-700 text-white text-center font-bold py-3 rounded-xl shadow-lg shadow-indigo-600/30 transition-all text-sm transform hover:-translate-y-0.5">Assinar Pequenos Negócios</a>
               </div>
               
               {/* Equipe Pro */}
@@ -1217,7 +1264,7 @@ export default function App({ session }) {
                   <li className="flex items-center gap-2"><span className="text-green-500">✓</span> Captador B2B Automático</li>
                   <li className="flex items-center gap-2"><span className="text-green-500">✓</span> Suporte VIP WhatsApp</li>
                 </ul>
-                <a href="https://www.asaas.com/c/dtho5xew6ca5py2d" target="_blank" rel="noreferrer" className="block w-full bg-slate-800 hover:bg-black text-white text-center font-bold py-3 rounded-xl transition-colors text-sm">Assinar Equipe Pro</a>
+                <a href={`https://www.asaas.com/c/dtho5xew6ca5py2d?email=${encodeURIComponent(session?.user?.email || '')}&mobilePhone=${encodeURIComponent(companyPhone)}`} target="_blank" rel="noreferrer" className="block w-full bg-slate-800 hover:bg-black text-white text-center font-bold py-3 rounded-xl transition-colors text-sm">Assinar Equipe Pro</a>
               </div>
             </div>
             <p className="text-center text-[11px] text-slate-400 font-bold mt-4">Ao efetuar o pagamento, seu plano atual será atualizado automaticamente pelo sistema de cobranças.</p>
@@ -1515,23 +1562,20 @@ export default function App({ session }) {
           for (let i = 0; i < allContacts.length; i++) {
             const contact = allContacts[i];
             try {
-              // 1. Envia texto se houver
-              if (campMsg.trim()) {
-                const msg = campMsg.replace(/\{\{nome\}\}/gi, contact.nome);
-                await sendWahaMessage(contact.telefone, msg);
-              }
-              // 2. Envia anexo se houver
+              const msg = campMsg.trim() ? campMsg.replace(/\{\{nome\}\}/gi, contact.nome) : '';
+              
               if (campAttachment) {
-                if (campAttachment.type === 'audio') {
-                  await sendWahaAudio(contact.telefone, campAttachment.base64);
-                } else {
-                  await sendWahaMedia(
-                    contact.telefone,
-                    campAttachment.type,
-                    campAttachment.mimetype,
-                    campAttachment.base64,
-                    campAttachment.name
-                  );
+                await sendWahaMedia(
+                  contact.telefone,
+                  campAttachment.type,
+                  campAttachment.mimetype,
+                  campAttachment.base64,
+                  campAttachment.name,
+                  msg
+                );
+              } else {
+                if (msg) {
+                  await sendWahaMessage(contact.telefone, msg);
                 }
               }
               setCampProgress(prev => ({ ...prev, sent: i + 1, log: [{ nome: contact.nome, telefone: contact.telefone, status: '✅ Enviado' }, ...prev.log] }));
@@ -1635,8 +1679,14 @@ export default function App({ session }) {
                       type="file"
                       id="campFile"
                       onChange={async (e) => {
-                        const file = e.target.files[0];
-                        if (!file) return;
+                        const rawFile = e.target.files[0];
+                        if (!rawFile) return;
+                        
+                        let file = rawFile;
+                        if (rawFile.type.startsWith('image/')) {
+                          file = await compressImage(rawFile);
+                        }
+                        
                         if (file.size > 5 * 1024 * 1024) {
                           alert("Por favor, selecione um arquivo de até 5MB.");
                           e.target.value = '';
@@ -1660,56 +1710,29 @@ export default function App({ session }) {
                         reader.readAsDataURL(file);
                       }}
                       className="hidden"
-                      accept="audio/*,image/*,video/*,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/zip"
+                      accept="image/*,video/*,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/zip"
                     />
                     
                     {!campAttachment ? (
-                      <div className="grid grid-cols-2 gap-3">
-                        <label
-                          htmlFor="campFile"
-                          className="flex flex-col items-center justify-center p-4 border-2 border-dashed border-slate-200 hover:border-orange-400 rounded-xl cursor-pointer bg-slate-50 hover:bg-orange-50/20 transition-all text-center h-28"
-                        >
-                          <span className="text-2xl mb-1">📎</span>
-                          <span className="text-xs font-bold text-slate-600">Enviar Arquivo</span>
-                          <span className="text-[10px] text-slate-400 mt-0.5">PDF, Imagem (Max 5MB)</span>
-                        </label>
-                        
-                        {!isRecording ? (
-                          <button
-                            type="button"
-                            onClick={startRecording}
-                            className="flex flex-col items-center justify-center p-4 border-2 border-dashed border-slate-200 hover:border-red-400 rounded-xl bg-slate-50 hover:bg-red-50/20 transition-all text-center h-28"
-                          >
-                            <span className="text-2xl mb-1 text-red-500">🎤</span>
-                            <span className="text-xs font-bold text-slate-600">Gravar Áudio</span>
-                            <span className="text-[10px] text-slate-400 mt-0.5">Grave sua voz diretamente</span>
-                          </button>
-                        ) : (
-                          <button
-                            type="button"
-                            onClick={stopRecording}
-                            className="flex flex-col items-center justify-center p-4 border-2 border-red-300 rounded-xl bg-red-50 text-center h-28 animate-pulse"
-                          >
-                            <span className="text-2xl mb-1 text-red-600">🔴</span>
-                            <span className="text-xs font-bold text-red-700">Gravando...</span>
-                            <span className="text-sm font-black text-red-800 mt-1 font-mono">
-                              {Math.floor(recordingSeconds / 60)}:{(recordingSeconds % 60).toString().padStart(2, '0')}
-                            </span>
-                            <span className="text-[9px] text-red-500 font-bold mt-1 uppercase">Clique para parar</span>
-                          </button>
-                        )}
-                      </div>
+                      <label
+                        htmlFor="campFile"
+                        className="flex flex-col items-center justify-center p-4 border-2 border-dashed border-slate-200 hover:border-orange-400 rounded-xl cursor-pointer bg-slate-50 hover:bg-orange-50/20 transition-all text-center h-28 w-full"
+                      >
+                        <span className="text-2xl mb-1">📎</span>
+                        <span className="text-xs font-bold text-slate-600">Enviar Arquivo</span>
+                        <span className="text-[10px] text-slate-400 mt-0.5">PDF, Imagem, Vídeo (Max 5MB)</span>
+                      </label>
                     ) : (
                       <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-3">
                         <div className="flex items-center justify-between">
                           <div className="flex items-center gap-2.5 min-w-0">
                             <span className="text-2xl">
-                              {campAttachment.type === 'audio' ? '🎤' : campAttachment.type === 'image' ? '🖼️' : '📄'}
+                              {campAttachment.type === 'image' ? '🖼️' : '📄'}
                             </span>
                             <div className="min-w-0">
                               <p className="text-xs font-bold text-slate-700 truncate">{campAttachment.name}</p>
                               <p className="text-[10px] text-slate-500 font-medium">
-                                {(campAttachment.size / 1024).toFixed(1)} KB {campAttachment.type === 'audio' && ' · Envia como áudio gravado'}
+                                {(campAttachment.size / 1024).toFixed(1)} KB
                               </p>
                             </div>
                           </div>
@@ -1725,12 +1748,6 @@ export default function App({ session }) {
                             Remover
                           </button>
                         </div>
-                        
-                        {campAttachment.type === 'audio' && (
-                          <div className="pt-2 border-t border-slate-200/60 flex items-center justify-center">
-                            <audio src={campAttachment.base64} controls className="w-full h-10" />
-                          </div>
-                        )}
                       </div>
                     )}
                   </div>

@@ -1,8 +1,32 @@
+const fs = require('fs');
+const path = require('path');
+
+// Carregar variáveis de ambiente do arquivo .env local se existir
+try {
+  const envPath = path.join(__dirname, '.env');
+  if (fs.existsSync(envPath)) {
+    const envLines = fs.readFileSync(envPath, 'utf8').split('\n');
+    envLines.forEach(line => {
+      const match = line.match(/^\s*([\w.-]+)\s*=\s*(.*)?\s*$/);
+      if (match) {
+        const key = match[1];
+        let value = match[2] || '';
+        if (value.startsWith('"') && value.endsWith('"')) value = value.slice(1, -1);
+        if (value.startsWith("'") && value.endsWith("'")) value = value.slice(1, -1);
+        process.env[key] = value.trim();
+      }
+    });
+  }
+} catch (e) {
+  console.log('Erro ao carregar arquivo .env local:', e.message);
+}
+
 const { createClient } = require('@supabase/supabase-js');
 const WebSocket = require('ws');
 const express = require('express');
 const app = express();
 app.use(express.json());
+
 
 // Supabase Connection
 const supabaseUrl = 'https://zdlybiifkambebscydsp.supabase.co';
@@ -332,7 +356,184 @@ app.post('/webhook/:companyId', async (req, res) => {
   }
 });
 
+// ==========================================
+// WEBHOOK DO ASAAS PARA ASSINATURAS
+// ==========================================
+app.post('/asaas-webhook', async (req, res) => {
+  const payload = req.body;
+  
+  // Acknowledge Asaas immediately
+  res.status(200).send('OK');
+
+  try {
+    const { event, payment } = payload;
+    console.log(`\n=== ASAAS WEBHOOK RECEBIDO ===`);
+    console.log(`Evento: ${event}`);
+    if (payment) {
+      console.log(`Pagamento ID: ${payment.id}, Customer ID: ${payment.customer}, Valor: ${payment.value}`);
+    }
+
+    if (event !== 'PAYMENT_RECEIVED' && event !== 'PAYMENT_CONFIRMED') {
+      console.log(`[IGNORE] Evento ignorado: ${event}`);
+      return;
+    }
+
+    if (!payment || !payment.customer) {
+      console.error('❌ Pagamento ou cliente não informado no payload.');
+      return;
+    }
+
+    const customerId = payment.customer;
+    const paymentValue = payment.value;
+
+    // Buscar chave de API do Asaas (process.env.ASAAS_API_KEY)
+    const asaasApiKey = process.env.ASAAS_API_KEY || '';
+
+    if (!asaasApiKey) {
+      console.warn('⚠️ AVISO: ASAAS_API_KEY não configurada. A busca de e-mail/telefone na API do Asaas falhará.');
+    }
+
+    console.log(`Buscando detalhes do cliente ${customerId} no Asaas...`);
+    let customerDetails = null;
+
+    if (asaasApiKey) {
+      try {
+        const asaasRes = await fetch(`https://www.asaas.com/api/v3/customers/${customerId}`, {
+          method: 'GET',
+          headers: {
+            'access_token': asaasApiKey,
+            'Content-Type': 'application/json'
+          }
+        });
+        if (asaasRes.ok) {
+          customerDetails = await asaasRes.json();
+          console.log(`Cliente localizado no Asaas: Email: ${customerDetails.email}, Telefone: ${customerDetails.mobilePhone}`);
+        } else {
+          console.warn(`Aviso: Falha ao buscar cliente no Asaas (Status: ${asaasRes.status}).`);
+        }
+      } catch (apiErr) {
+        console.error('Erro na requisição da API Asaas:', apiErr.message);
+      }
+    }
+
+    let companyId = null;
+
+    // 1. Tentar correspondência por e-mail se conseguimos carregar da API do Asaas
+    if (customerDetails && customerDetails.email) {
+      const emailMatch = customerDetails.email.trim().toLowerCase();
+      console.log(`Buscando empresa pelo e-mail: ${emailMatch}`);
+      const { data: roleData, error: roleErr } = await supabaseAdmin
+        .from('user_roles')
+        .select('company_id')
+        .eq('email', emailMatch)
+        .limit(1);
+
+      if (roleData && roleData.length > 0) {
+        companyId = roleData[0].company_id;
+        console.log(`Empresa localizada via e-mail: ${companyId}`);
+      } else if (roleErr) {
+        console.error('Erro ao buscar por e-mail:', roleErr.message);
+      }
+    }
+
+    // 2. Se não localizou por e-mail, tentar por telefone (usando celular do Asaas ou dados do payload)
+    if (!companyId && customerDetails && customerDetails.mobilePhone) {
+      const phoneMatch = customerDetails.mobilePhone.replace(/\D/g, '');
+      if (phoneMatch) {
+        const variants = getPhoneVariants(phoneMatch);
+        console.log(`Buscando empresa pelas variantes de telefone: ${JSON.stringify(variants)}`);
+        const orFilter = variants.map(v => `phone.eq.${v}`).join(',');
+        const { data: compData, error: compErr } = await supabaseAdmin
+          .from('companies')
+          .select('id')
+          .or(orFilter)
+          .order('created_at', { ascending: false })
+          .limit(1);
+
+        if (compData && compData.length > 0) {
+          companyId = compData[0].id;
+          console.log(`Empresa localizada via telefone (Asaas API): ${companyId}`);
+        } else if (compErr) {
+          console.error('Erro ao buscar por telefone:', compErr.message);
+        }
+      }
+    }
+
+    if (!companyId) {
+      console.error('❌ Não foi possível associar o pagamento a nenhuma empresa ativa no banco de dados.');
+      return;
+    }
+
+    // Buscar dados atuais da empresa para somar a data
+    console.log(`Carregando dados da empresa ${companyId}...`);
+    const { data: company, error: companyErr } = await supabaseAdmin
+      .from('companies')
+      .select('id, name, trial_ends_at, plan')
+      .eq('id', companyId)
+      .single();
+
+    if (companyErr || !company) {
+      console.error(`Erro ao carregar empresa ${companyId}:`, companyErr?.message);
+      return;
+    }
+
+    // Calcular nova data de expiração
+    const now = new Date();
+    let baseDate = now;
+    
+    if (company.trial_ends_at) {
+      const currentExpiry = new Date(company.trial_ends_at);
+      if (currentExpiry > now) {
+        // Se a assinatura ainda está ativa/no futuro, somamos a partir dela!
+        baseDate = currentExpiry;
+        console.log(`Assinatura ativa até ${currentExpiry.toISOString()}. Somando a partir daí.`);
+      } else {
+        console.log(`Assinatura anterior expirada em ${currentExpiry.toISOString()}. Definindo a partir de agora.`);
+      }
+    } else {
+      console.log(`Nenhuma expiração anterior registrada. Definindo a partir de agora.`);
+    }
+
+    // Adiciona exatamente 30 dias (30 * 24 * 60 * 60 * 1000 milissegundos)
+    const newExpiryDate = new Date(baseDate.getTime() + (30 * 24 * 60 * 60 * 1000));
+    console.log(`Nova data de expiração calculada: ${newExpiryDate.toISOString()}`);
+
+    // Identificar o plano com base no valor pago
+    let matchedPlan = company.plan || 'Pequenos Negócios';
+    if (paymentValue >= 40 && paymentValue <= 60) {
+      matchedPlan = 'Vendedor Solo';
+    } else if (paymentValue >= 60 && paymentValue <= 85) {
+      matchedPlan = 'Pequenos Negócios';
+    } else if (paymentValue >= 85 && paymentValue <= 110) {
+      matchedPlan = 'Equipe Pro';
+    }
+    console.log(`Plano identificado pelo valor R$ ${paymentValue}: ${matchedPlan}`);
+
+    // Atualizar no banco de dados
+    const { data: updateRes, error: updateErr } = await supabaseAdmin
+      .from('companies')
+      .update({
+        subscription_status: 'active',
+        trial_ends_at: newExpiryDate.toISOString(),
+        plan: matchedPlan,
+        asaas_customer_id: customerId
+      })
+      .eq('id', companyId)
+      .select();
+
+    if (updateErr) {
+      console.error('❌ Erro ao atualizar assinatura da empresa:', updateErr.message);
+    } else {
+      console.log(`✅ Assinatura da empresa "${company.name}" atualizada com sucesso para ${newExpiryDate.toISOString()} (${matchedPlan})`);
+    }
+
+  } catch (err) {
+    console.error('❌ Erro crítico no processamento do webhook do Asaas:', err.message);
+  }
+});
+
 const PORT = 3001;
 app.listen(PORT, () => {
   console.log(`📡 Webhook Server escutando na porta ${PORT}`);
 });
+
