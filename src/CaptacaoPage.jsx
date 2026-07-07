@@ -192,7 +192,7 @@ export default function CaptacaoPage({ vendedorId }) {
       if (userRole.company_id) {
         const { data: comp, error: cErr } = await supabase
           .from('companies')
-          .select('id, name, phone, nicho, logo_url')
+          .select('*')
           .eq('id', userRole.company_id)
           .single();
 
