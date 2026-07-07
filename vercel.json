@@ -4,7 +4,12 @@
     {
       "source": "/evolution/:path*",
       "destination": "http://187.77.243.166:8080/:path*"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
     }
   ]
 }
+
 
