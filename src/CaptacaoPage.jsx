@@ -179,25 +179,30 @@ export default function CaptacaoPage({ vendedorId }) {
       setLoading(true);
       const { data: userRole, error: pErr } = await supabase
         .from('user_roles')
-        .select('id, email, role, company_id, name')
+        .select('id, email, role, company_id')
         .eq('id', vendedorId)
         .single();
 
-      if (pErr || !userRole) { setNotFound(true); setLoading(false); return; }
+      if (pErr || !userRole) {
+        console.error('[CaptacaoPage] Erro ao buscar user_roles:', pErr, 'vendedorId:', vendedorId);
+        setNotFound(true); setLoading(false); return;
+      }
       setVendedor(userRole);
 
       if (userRole.company_id) {
-        const { data: comp } = await supabase
+        const { data: comp, error: cErr } = await supabase
           .from('companies')
           .select('id, name, phone, nicho, logo_url')
           .eq('id', userRole.company_id)
           .single();
 
+        console.log('[CaptacaoPage] company result:', comp, cErr);
         if (comp) { setEmpresa(comp); setNicho(comp.nicho || 'geral'); }
       }
       setLoading(false);
     }
     load();
+
   }, [vendedorId]);
 
   const config = NICHOS_CONFIG[nicho] || NICHOS_CONFIG.geral;
