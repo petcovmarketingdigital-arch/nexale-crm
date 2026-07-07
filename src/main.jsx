@@ -3,7 +3,20 @@ import { createRoot } from 'react-dom/client'
 import './index.css'
 import App from './App.jsx'
 import Auth from './Auth.jsx'
+import CaptacaoPage from './CaptacaoPage.jsx'
 import { supabase } from './supabaseClient'
+
+// ─── Rota pública /captar/:vendedorId ─────────────────────────────────────────
+const captacaoMatch = window.location.pathname.match(/^\/captar\/([^/]+)$/);
+if (captacaoMatch) {
+  const vendedorId = captacaoMatch[1];
+  createRoot(document.getElementById('root')).render(
+    <StrictMode>
+      <CaptacaoPage vendedorId={vendedorId} />
+    </StrictMode>
+  );
+} else {
+
 
 function Root() {
   const [session, setSession] = useState(null)
@@ -88,3 +101,4 @@ createRoot(document.getElementById('root')).render(
     <Root />
   </StrictMode>,
 )
+} // fim do else (rota não é /captar)

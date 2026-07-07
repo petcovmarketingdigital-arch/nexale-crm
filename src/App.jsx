@@ -2715,79 +2715,85 @@ export default function App({ session }) {
       )}
       {showLinkModal && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50 animate-fade-in">
-          <div className="bg-white rounded-xl shadow-xl max-w-xl w-full p-6 border border-slate-100">
+          <div className="bg-white rounded-2xl shadow-xl max-w-xl w-full p-6 border border-slate-100">
             <h3 className="text-xl font-black text-slate-800 mb-1 flex items-center gap-2">
-              🚀 Captação Automática B2C (Pessoa Física)
+              🚀 Captação B2C — Landing Page Personalizada
             </h3>
             <p className="text-xs text-slate-500 mb-6">
-              Transforme cliques em anúncios ou links da bio em cards automáticos no seu Kanban.
+              Compartilhe seu link exclusivo em anúncios, bio do Instagram ou WhatsApp. O lead preenche um formulário bonito e entra direto no seu Kanban!
             </p>
 
-            <div className="bg-slate-50 border border-slate-100 rounded-xl p-4 mb-6 space-y-3">
+            {/* Como funciona */}
+            <div className="bg-slate-50 border border-slate-100 rounded-xl p-4 mb-5 space-y-3">
               <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider">Como funciona?</h4>
               <div className="flex gap-3 text-xs text-slate-600">
                 <span className="bg-green-100 text-green-700 font-bold rounded-full w-5 h-5 flex items-center justify-center shrink-0">1</span>
-                <p><strong>Defina a Frase Gatilho:</strong> Digite uma frase padrão abaixo que seu lead usará para entrar em contato (ex: <em>"Olá, vi seu anúncio no Instagram!"</em>).</p>
+                <p><strong>Copie seu link exclusivo</strong> abaixo e coloque na bio do Instagram, no WhatsApp ou como destino dos seus anúncios no Meta Ads / Google Ads.</p>
               </div>
               <div className="flex gap-3 text-xs text-slate-600">
                 <span className="bg-green-100 text-green-700 font-bold rounded-full w-5 h-5 flex items-center justify-center shrink-0">2</span>
-                <p><strong>Crie o seu Link:</strong> Copie o <strong>Link do WhatsApp</strong> gerado abaixo e configure na sua bio ou como link de conversão das suas campanhas no Facebook Ads (Meta) ou Google Ads.</p>
+                <p>O lead acessa uma <strong>página profissional</strong> com o tema do nicho da sua empresa e preenche nome, telefone e informações específicas.</p>
               </div>
               <div className="flex gap-3 text-xs text-slate-600">
                 <span className="bg-green-100 text-green-700 font-bold rounded-full w-5 h-5 flex items-center justify-center shrink-0">3</span>
-                <p><strong>Entrada no Kanban:</strong> Quando o lead clicar no link e enviar a frase exata no seu WhatsApp, o sistema cria o card automaticamente na coluna <strong>Leads</strong> e o robô responde com a mensagem automática configurada!</p>
+                <p>O card entra <strong>automaticamente no Kanban</strong>, sem depender do WhatsApp receber mensagem. 100% confiável!</p>
               </div>
             </div>
 
-            <div className="space-y-4">
-              <div>
-                <label className="block text-xs font-bold text-slate-600 uppercase mb-1">Frase Gatilho</label>
-                <input 
-                  type="text" 
-                  value={triggerPhrase}
-                  onChange={(e) => setTriggerPhrase(e.target.value)}
-                  placeholder="Ex: Vim pelo Instagram e quero saber mais!"
-                  className="w-full border border-slate-300 rounded-lg p-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 bg-white"
+            {/* Link da Landing Page */}
+            <div className="space-y-2 mb-5">
+              <label className="block text-xs font-bold text-slate-600 uppercase">Seu Link de Captação</label>
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  readOnly
+                  value={`${window.location.origin}/captar/${session?.user?.id || ''}`}
+                  className="w-full border border-slate-300 rounded-xl p-3 text-sm bg-slate-50 text-slate-700 cursor-copy font-mono"
+                  onClick={(e) => {
+                    e.target.select();
+                    navigator.clipboard.writeText(e.target.value);
+                    alert('✅ Link copiado!');
+                  }}
                 />
+                <button
+                  onClick={() => {
+                    navigator.clipboard.writeText(`${window.location.origin}/captar/${session?.user?.id || ''}`);
+                    alert('✅ Link copiado!');
+                  }}
+                  className="bg-green-500 hover:bg-green-600 text-white px-4 py-3 rounded-xl text-sm font-bold transition-colors shrink-0"
+                >
+                  Copiar
+                </button>
               </div>
-              <div>
-                <label className="block text-xs font-bold text-slate-600 uppercase mb-1">Seu Link Pronto (Para Colocar na Bio / Meta Ads)</label>
-                <div className="flex items-center gap-2">
-                  <input 
-                    type="text" 
-                    readOnly
-                    value={`https://wa.me/55${companyPhone}?text=${encodeURIComponent(triggerPhrase)}`}
-                    className="w-full border border-slate-300 rounded-lg p-2 text-sm bg-slate-50 text-slate-600 cursor-copy"
-                    onClick={(e) => {
-                      e.target.select();
-                      navigator.clipboard.writeText(e.target.value);
-                      alert('Link copiado!');
-                    }}
-                  />
-                  <button 
-                    onClick={() => {
-                      navigator.clipboard.writeText(`https://wa.me/55${companyPhone}?text=${encodeURIComponent(triggerPhrase)}`);
-                      alert('Link copiado!');
-                    }}
-                    className="bg-slate-200 hover:bg-slate-300 px-3 py-2 rounded-lg text-sm font-medium transition-colors shrink-0"
-                  >
-                    Copiar
-                  </button>
-                </div>
-                <p className="text-[10px] text-slate-400 mt-1">Dica: Clique no link acima para copiar.</p>
-              </div>
-
-
+              <p className="text-[10px] text-slate-400">Clique no link para copiar. Cada vendedor tem seu próprio link exclusivo.</p>
             </div>
-            <div className="flex justify-end gap-3 mt-6">
-              <button type="button" onClick={() => setShowLinkModal(false)} className="px-4 py-2 text-sm font-medium text-slate-500 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer">Fechar</button>
-              <button type="button" onClick={handleSaveTrigger} className="px-4 py-2 text-sm font-medium text-slate-900 bg-green-500 hover:bg-green-600 rounded-lg transition-colors shadow-sm shadow-green-900/5 cursor-pointer">
-                Salvar Gatilho
+
+            {/* Preview */}
+            <div className="mb-5">
+              <button
+                onClick={() => window.open(`${window.location.origin}/captar/${session?.user?.id || ''}`, '_blank')}
+                className="w-full flex items-center justify-center gap-2 border-2 border-dashed border-slate-200 hover:border-green-400 hover:bg-green-50 text-slate-500 hover:text-green-600 font-semibold py-3 rounded-xl transition-all text-sm"
+              >
+                👁️ Pré-visualizar minha Landing Page
               </button>
+            </div>
+
+            {/* Nicho ativo */}
+            <div className="bg-indigo-50 border border-indigo-100 rounded-xl p-3 flex items-center gap-3 mb-5">
+              <span className="text-2xl">{NICHOS_CONFIG[companyNiche]?.emoji || '📋'}</span>
+              <div>
+                <p className="text-xs font-bold text-indigo-700">Nicho Ativo da Empresa</p>
+                <p className="text-xs text-indigo-600">{NICHOS_CONFIG[companyNiche]?.label || 'Geral / Padrão'} — os campos do formulário já estão configurados para este segmento.</p>
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-3">
+              <button type="button" onClick={() => setShowLinkModal(false)} className="px-4 py-2 text-sm font-medium text-slate-500 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer">Fechar</button>
             </div>
           </div>
         </div>
       )}
+
     </div>
   );
 }
