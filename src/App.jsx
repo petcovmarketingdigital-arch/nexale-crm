@@ -705,6 +705,35 @@ export default function App({ session }) {
         if (data && data.instance && data.instance.state === 'open') {
           setWaConnected(true);
           setWaUser('Conectado');
+
+          // Busca o número conectado de forma assíncrona
+          fetch('/evolution/instance/fetchInstances', {
+            headers: { 'apikey': '123' }
+          })
+          .then(res => res.json())
+          .then(instances => {
+            if (Array.isArray(instances)) {
+              const matched = instances.find(inst => inst.name === activeInstance);
+              if (matched && matched.ownerJid) {
+                const rawNum = matched.ownerJid.split('@')[0];
+                // Formata o número (ex: 555196952482 -> +55 (51) 96952-482)
+                let formatted = rawNum;
+                if (rawNum.startsWith('55') && rawNum.length >= 12) {
+                  const ddd = rawNum.slice(2, 4);
+                  const rest = rawNum.slice(4);
+                  if (rest.length === 9) {
+                    formatted = `+55 (${ddd}) ${rest.slice(0, 5)}-${rest.slice(5)}`;
+                  } else {
+                    formatted = `+55 (${ddd}) ${rest.slice(0, 4)}-${rest.slice(4)}`;
+                  }
+                } else {
+                  formatted = `+${rawNum}`;
+                }
+                setWaUser(formatted);
+              }
+            }
+          })
+          .catch(console.error);
           
           // Configura o Webhook silenciosamente
           fetch(`/evolution/webhook/set/${activeInstance}`, {
