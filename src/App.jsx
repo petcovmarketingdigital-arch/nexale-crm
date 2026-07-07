@@ -267,6 +267,8 @@ export default function App({ session }) {
   const [activeCardAiPaused, setActiveCardAiPaused] = useState(false);
   const [selectedConfigCompanyId, setSelectedConfigCompanyId] = useState('');
   const [companyNiche, setCompanyNiche] = useState('geral');
+  const [companyLogoUrl, setCompanyLogoUrl] = useState('');
+
 
   const [formData, setFormData] = useState({
     empresa: '',
@@ -324,14 +326,16 @@ export default function App({ session }) {
     }
 
     if (compId) {
-      const { data: compData } = await supabase.from('companies').select('invite_code, subscription_status, trial_ends_at, phone, nicho').eq('id', compId).single();
+      const { data: compData } = await supabase.from('companies').select('invite_code, subscription_status, trial_ends_at, phone, nicho, logo_url').eq('id', compId).single();
       if (compData) {
         if (role === 'admin') setInviteCode(compData.invite_code);
         setSubscriptionStatus(compData.subscription_status);
         setTrialEndsAt(compData.trial_ends_at);
         setCompanyPhone(compData.phone || '');
         setCompanyNiche(compData.nicho || 'geral');
+        setCompanyLogoUrl(compData.logo_url || '');
       }
+
 
       if (role === 'admin') {
         const { data: teamData } = await supabase.from('user_roles').select('*').eq('company_id', compId);
@@ -828,12 +832,13 @@ export default function App({ session }) {
       try {
         const { data, error } = await supabase
           .from('companies')
-          .select('nicho, message_templates')
+          .select('nicho, message_templates, logo_url')
           .eq('id', activeId)
           .single();
 
         if (!error && data) {
           setCompanyNiche(data.nicho || 'geral');
+          setCompanyLogoUrl(data.logo_url || '');
           if (data.message_templates) {
             setMessageTemplates(data.message_templates);
             if (data.message_templates.ai_enabled !== undefined) setAiEnabled(!!data.message_templates.ai_enabled);
@@ -849,7 +854,19 @@ export default function App({ session }) {
     loadCompanySettings();
   }, [selectedConfigCompanyId, companyId, userRole]);
 
+  const handleUpdateCompanyLogoUrl = async (newLogoUrl) => {
+    setCompanyLogoUrl(newLogoUrl);
+    const activeId = userRole === 'superadmin' ? selectedConfigCompanyId : companyId;
+    if (activeId) {
+      const { error } = await supabase.from('companies').update({ logo_url: newLogoUrl }).eq('id', activeId);
+      if (error) {
+        console.error('Error updating company logo URL:', error.message);
+      }
+    }
+  };
+
   const handleUpdateCompanyNiche = async (newNiche) => {
+
     setCompanyNiche(newNiche);
     const activeId = userRole === 'superadmin' ? selectedConfigCompanyId : companyId;
     if (activeId) {
@@ -2389,6 +2406,28 @@ export default function App({ session }) {
                 Isso altera dinamicamente os campos de captação na ficha dos Leads e a exibição de tags no funil.
               </p>
             </div>
+
+            <div className="space-y-2 pt-4 border-t border-slate-100">
+              <label className="block text-xs font-bold text-slate-600 uppercase">Logotipo da Empresa (URL da Imagem)</label>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  placeholder="https://suaempresa.com/logo.png"
+                  value={companyLogoUrl}
+                  onChange={(e) => handleUpdateCompanyLogoUrl(e.target.value)}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
+                />
+                {companyLogoUrl && (
+                  <div className="w-12 h-12 rounded-xl border border-slate-200 flex items-center justify-center bg-slate-50 shrink-0 overflow-hidden">
+                    <img src={companyLogoUrl} alt="Logo" className="max-w-full max-h-full object-contain" onError={(e) => { e.target.style.display = 'none'; }} />
+                  </div>
+                )}
+              </div>
+              <p className="text-[10px] text-slate-400">
+                Insira o link direto de uma imagem (PNG, JPG, SVG) para personalizar o topo das páginas de captação.
+              </p>
+            </div>
+
           </div>
         </div>
       )}
