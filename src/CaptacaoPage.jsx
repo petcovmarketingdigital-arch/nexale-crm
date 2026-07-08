@@ -220,14 +220,17 @@ export default function CaptacaoPage({ vendedorId }) {
       const rawPhone = telefone.replace(/\D/g, '');
       const { error } = await supabase.from('leads').insert({
         company_id: empresa?.id || null,
+        user_id: vendedorId || null,
         contato: nome.trim(),
         telefone: rawPhone,
+        empresa: 'B2C',
         tipo: 'B2C',
-        status: 'Leads',
+        coluna_id: 'leads',
         origem: 'Landing Page',
-        temperatura: 'Morno',
+        status_amostra: 'Morno',
         dados_nicho: nichoFields,
       });
+
       if (error) throw error;
       setSubmitted(true);
     } catch (err) {
