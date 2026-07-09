@@ -223,13 +223,14 @@ export default function CaptacaoPage({ vendedorId }) {
         user_id: vendedorId || null,
         contato: nome.trim(),
         telefone: rawPhone,
-        empresa: 'B2C',
+        empresa: nome.trim(),
         tipo: 'B2C',
         coluna_id: 'leads',
         origem: 'Landing Page',
         status_amostra: 'Morno',
         dados_nicho: nichoFields,
       });
+
 
       if (error) throw error;
       setSubmitted(true);
