@@ -549,7 +549,12 @@ app.post('/sac-chat', async (req, res) => {
   }
 
   try {
-    const geminiApiKey = process.env.GEMINI_API_KEY || 'AIzaSyAUgtyU1k5H4SveJuCT1ZUp3S-3dbgjdv0';
+    const geminiApiKey = process.env.GEMINI_API_KEY;
+
+    if (!geminiApiKey) {
+      console.error('❌ Erro no SAC Chat: GEMINI_API_KEY não está configurada no ambiente.');
+      return res.status(500).json({ error: 'Erro de configuração do servidor de IA.' });
+    }
 
     const systemInstruction = `Você é a "Nexa", assistente inteligente de suporte técnico do Nexale CRM.
 Seu objetivo é responder a dúvidas dos usuários/assinantes sobre a nossa plataforma com tom profissional, prestativo, rápido e amigável.
@@ -588,7 +593,7 @@ Regras de Atendimento:
       parts: [{ text: message }]
     });
 
-    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${geminiApiKey}`, {
+    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent?key=${geminiApiKey}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
