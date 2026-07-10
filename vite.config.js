@@ -8,7 +8,7 @@ export default defineConfig({
     tailwindcss(),
     react(),
     VitePWA({
-      registerType: 'autoUpdate',
+      registerType: 'prompt',
       includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'masked-icon.svg'],
       workbox: {
         navigateFallbackDenylist: [/^\/evolution/, /^\/api/],

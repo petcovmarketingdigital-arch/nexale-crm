@@ -24,7 +24,9 @@ try {
 const { createClient } = require('@supabase/supabase-js');
 const WebSocket = require('ws');
 const express = require('express');
+const cors = require('cors');
 const app = express();
+app.use(cors({ origin: '*' }));
 app.use(express.json());
 
 
@@ -529,6 +531,85 @@ app.post('/asaas-webhook', async (req, res) => {
 
   } catch (err) {
     console.error('❌ Erro crítico no processamento do webhook do Asaas:', err.message);
+  }
+});
+
+// ==========================================
+// ENDPOINT DO SAC INTELIGENTE (CHATBOT IA)
+// ==========================================
+app.get('/sac-chat', (req, res) => {
+  res.send('SAC ONLINE');
+});
+
+app.post('/sac-chat', async (req, res) => {
+  const { message, history } = req.body;
+
+  if (!message) {
+    return res.status(400).json({ error: 'Mensagem vazia.' });
+  }
+
+  try {
+    const geminiApiKey = process.env.GEMINI_API_KEY || 'AIzaSyAUgtyU1k5H4SveJuCT1ZUp3S-3dbgjdv0';
+
+    const systemInstruction = `Você é a "Nexa", assistente inteligente de suporte técnico do Nexale CRM.
+Seu objetivo é responder a dúvidas dos usuários/assinantes sobre a nossa plataforma com tom profissional, prestativo, rápido e amigável.
+
+Informações Importantes do Nexale CRM:
+1. Funcionalidades do Sistema:
+   - Funil Kanban de Vendas personalizável por nicho de mercado (ex: imobiliária, concessionária, escolas, clínicas, etc.).
+   - Disparo em massa de Campanhas de mensagens no WhatsApp.
+   - Atendimento integrado e inteligente com Inteligência Artificial (Gemini) respondendo leads e clientes automaticamente.
+   - Scraping/Captador Automático de leads B2B buscando dados de CNPJs locais na internet.
+   - Relatórios e Dashboards analíticos de faturamento em tempo real.
+2. Planos e Preços:
+   - Vendedor Solo (R$ 49/mês): Recomendado para 1 usuário (gerente), inclui funil Kanban e disparos de WhatsApp.
+   - Pequenos Negócios (R$ 79/mês): Recomendado para até 3 usuários, inclui dashboards de relatórios e suporte prioritário.
+   - Equipe Pro (R$ 99/mês): Recomendado para até 10 usuários, inclui o Captador B2B Automático e suporte VIP no WhatsApp.
+3. Como conectar o WhatsApp no CRM:
+   - Vá no menu de configurações do WhatsApp ou clique no ícone de conexão do WhatsApp, gere o QR Code clicando em "Conectar WhatsApp" e escaneie com o app do WhatsApp no seu celular (como faz no WhatsApp Web).
+4. Suporte Humano:
+   - Se o cliente perguntar algo complexo sobre cobranças específicas, reembolso, bugs técnicos ou pedir explicitamente para falar com um humano, instrua-o de forma atenciosa a entrar em contato com o suporte humano no WhatsApp ou a abrir um chamado.
+
+Regras de Atendimento:
+- Responda em português de forma clara, formatando a resposta com parágrafos curtos, emojis de forma sóbria e marcadores para facilitar a leitura.
+- Seja breve e direto ao ponto nas respostas para não alongar demais a leitura.`;
+
+    const contents = [];
+    if (history && Array.isArray(history)) {
+      history.forEach(h => {
+        contents.push({
+          role: h.role === 'assistant' ? 'model' : 'user',
+          parts: [{ text: h.content }]
+        });
+      });
+    }
+    contents.push({
+      role: 'user',
+      parts: [{ text: message }]
+    });
+
+    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${geminiApiKey}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        systemInstruction: {
+          parts: [{ text: systemInstruction }]
+        },
+        contents: contents
+      })
+    });
+
+    if (!response.ok) {
+      const errText = await response.text();
+      throw new Error(`Erro na API do Gemini: ${response.status} - ${errText}`);
+    }
+
+    const data = await response.json();
+    const replyText = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+    res.json({ reply: replyText.trim() });
+  } catch (error) {
+    console.error('Erro no SAC Chat:', error.message);
+    res.status(500).json({ error: 'Erro ao processar a resposta da IA. Tente novamente mais tarde.' });
   }
 });
 

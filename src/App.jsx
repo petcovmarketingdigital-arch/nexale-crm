@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from './supabaseClient';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, PieChart, Pie, Cell, Legend } from 'recharts';
+import { useRegisterSW } from 'virtual:pwa-register/react';
 
 const INITIAL_COLUMNS = [
   { id: 'leads', title: 'Leads (Entrada)', cards: [] },
@@ -309,6 +310,11 @@ const NICHOS_CONFIG = {
 };
 
 export default function App({ session }) {
+  const {
+    needRefresh: [needRefresh],
+    updateServiceWorker,
+  } = useRegisterSW();
+
   const [columns, setColumns] = useState(INITIAL_COLUMNS);
   const [showConfigModal, setShowConfigModal] = useState(false);
   const [showUpgradeModal, setShowUpgradeModal] = useState(false);
@@ -358,6 +364,52 @@ export default function App({ session }) {
   const [triggerPhrase, setTriggerPhrase] = useState('Olá, vi seu anúncio e gostaria de mais informações!');
   const [showLinkModal, setShowLinkModal] = useState(false);
   const [companyPhone, setCompanyPhone] = useState('');
+
+  // SAC Inteligente Chatbot (Nexa)
+  const [isSacOpen, setIsSacOpen] = useState(false);
+  const [sacMessages, setSacMessages] = useState([
+    { role: 'assistant', content: 'Olá! Sou a Nexa, assistente de suporte inteligente do Nexale CRM. 🤖\n\nPosso te ajudar a tirar qualquer dúvida sobre a nossa plataforma, planos, preços ou conexão de WhatsApp. Como posso te ajudar hoje?' }
+  ]);
+  const [sacInput, setSacInput] = useState('');
+  const [isSacSending, setIsSacSending] = useState(false);
+
+  const handleSendSacMessage = async (e) => {
+    if (e) e.preventDefault();
+    if (!sacInput.trim() || isSacSending) return;
+
+    const userText = sacInput.trim();
+    setSacInput('');
+    setSacMessages(prev => [...prev, { role: 'user', content: userText }]);
+    setIsSacSending(true);
+
+    try {
+      const isLocal = ['localhost', '127.0.0.1'].includes(window.location.hostname);
+      const apiEndpoint = isLocal 
+        ? 'http://187.77.243.166:3001/sac-chat'
+        : `${window.location.origin}/sac-chat`;
+
+      const response = await fetch(apiEndpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          message: userText,
+          history: sacMessages.slice(1) 
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error('Falha na resposta do servidor.');
+      }
+
+      const data = await response.json();
+      setSacMessages(prev => [...prev, { role: 'assistant', content: data.reply || 'Desculpe, não consegui obter uma resposta.' }]);
+    } catch (err) {
+      console.error(err);
+      setSacMessages(prev => [...prev, { role: 'assistant', content: '❌ Ops! Tive um problema de conexão. Por favor, tente novamente.' }]);
+    } finally {
+      setIsSacSending(false);
+    }
+  };
 
   const EVOLUTION_API_URL = 'http://187.77.243.166:8080';
   const EVOLUTION_API_KEY = 'Decisao@3990';
@@ -1461,6 +1513,19 @@ export default function App({ session }) {
 
   return (
     <div className="p-6 bg-slate-50 min-h-screen font-sans">
+      {/* Banner de Atualização PWA */}
+      {needRefresh && (
+        <div className="mb-6 bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 text-white px-4 py-3 rounded-xl text-center text-xs md:text-sm font-bold flex flex-col md:flex-row items-center justify-center gap-3 shadow-lg z-[9999] relative animate-bounce border border-indigo-500">
+          <span className="flex items-center gap-2">✨ Uma nova versão do Nexale CRM está pronta com novidades!</span>
+          <button
+            onClick={() => updateServiceWorker(true)}
+            className="bg-white hover:bg-slate-100 text-indigo-700 px-4 py-1.5 rounded-lg text-xs font-black transition-all cursor-pointer shadow-md transform hover:scale-105 active:scale-95"
+          >
+            ⚡ Atualizar Agora
+          </button>
+        </div>
+      )}
+
       {/* HEADER COMPLETO */}
       <div className="flex flex-col xl:flex-row justify-between items-start xl:items-center mb-8 gap-4 bg-white p-4 rounded-xl shadow-sm shadow-indigo-900/5 border border-slate-100">
         <div>
@@ -3093,6 +3158,96 @@ export default function App({ session }) {
           </div>
         </div>
       )}
+
+      {/* ========================================== */}
+      {/* WIDGET FLUTUANTE DE SAC COM IA (NEXA)       */}
+      {/* ========================================== */}
+      <div className="fixed bottom-6 right-6 z-[999]">
+        {/* Botão de abrir/fechar */}
+        <button
+          onClick={() => setIsSacOpen(!isSacOpen)}
+          className="w-14 h-14 bg-gradient-to-tr from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white rounded-full flex items-center justify-center shadow-lg shadow-indigo-600/30 transition-all transform hover:scale-105 active:scale-95 cursor-pointer relative group border-2 border-indigo-200/50"
+        >
+          {isSacOpen ? (
+            <span className="text-2xl font-bold">✕</span>
+          ) : (
+            <span className="text-2xl animate-pulse">💬</span>
+          )}
+          {!isSacOpen && (
+            <span className="absolute -top-1 -right-1 flex h-4 w-4">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-pink-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-4 w-4 bg-pink-500 text-[9px] text-white font-extrabold items-center justify-center shadow-md">1</span>
+            </span>
+          )}
+          <span className="absolute right-16 bg-slate-900 text-white text-[10px] font-black px-2.5 py-1.5 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap shadow-md">
+            Suporte IA Nexale
+          </span>
+        </button>
+
+        {/* Janela do Chat */}
+        {isSacOpen && (
+          <div className="absolute bottom-16 right-0 w-[350px] sm:w-[380px] h-[500px] bg-white rounded-2xl shadow-2xl border border-slate-100 flex flex-col overflow-hidden animate-in slide-in-from-bottom-5 duration-200 shadow-indigo-900/10">
+            {/* Header */}
+            <div className="bg-gradient-to-r from-indigo-600 via-purple-600 to-indigo-700 text-white p-4 flex items-center gap-3 shadow-md">
+              <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center text-xl shadow-inner border border-white/10">🤖</div>
+              <div>
+                <h4 className="text-sm font-black flex items-center gap-1.5">
+                  Nexa <span className="w-2 h-2 rounded-full bg-emerald-400 inline-block animate-pulse"></span>
+                </h4>
+                <p className="text-[10px] text-indigo-100 font-semibold">Suporte Inteligente Nexale CRM</p>
+              </div>
+            </div>
+
+            {/* Histórico de Mensagens */}
+            <div className="flex-1 overflow-y-auto p-4 space-y-3.5 bg-slate-50/50">
+              {sacMessages.map((msg, i) => (
+                <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                  <div className={`max-w-[85%] rounded-2xl px-4 py-2.5 text-xs font-medium leading-relaxed shadow-sm ${
+                    msg.role === 'user'
+                      ? 'bg-gradient-to-br from-indigo-600 to-purple-600 text-white rounded-tr-none'
+                      : 'bg-white text-slate-700 border border-slate-100 rounded-tl-none'
+                  }`}>
+                    {msg.content.split('\n').map((line, idx) => (
+                      <span key={idx} className="block min-h-[4px]">{line}</span>
+                    ))}
+                  </div>
+                </div>
+              ))}
+              {isSacSending && (
+                <div className="flex justify-start">
+                  <div className="bg-white border border-slate-100 rounded-2xl rounded-tl-none px-4 py-3 text-xs text-slate-400 font-semibold shadow-sm flex items-center gap-1.5 animate-pulse">
+                    <span>🤖 Nexa está digitando</span>
+                    <span className="flex gap-0.5">
+                      <span className="w-1 h-1 bg-slate-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></span>
+                      <span className="w-1 h-1 bg-slate-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></span>
+                      <span className="w-1 h-1 bg-slate-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></span>
+                    </span>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Input Form */}
+            <form onSubmit={handleSendSacMessage} className="p-3 border-t border-slate-100 bg-white flex gap-2">
+              <input
+                type="text"
+                placeholder="Digite sua dúvida sobre o CRM..."
+                value={sacInput}
+                onChange={(e) => setSacInput(e.target.value)}
+                disabled={isSacSending}
+                className="flex-1 border border-slate-200 focus:border-indigo-500 outline-none rounded-xl px-4 py-2 text-xs transition-colors bg-slate-50 text-slate-700 placeholder:text-slate-400"
+              />
+              <button
+                type="submit"
+                disabled={isSacSending || !sacInput.trim()}
+                className="bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl px-4 py-2 text-xs font-black transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+              >
+                Enviar
+              </button>
+            </form>
+          </div>
+        )}
+      </div>
 
     </div>
   );
