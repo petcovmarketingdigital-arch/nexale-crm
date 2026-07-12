@@ -465,7 +465,7 @@ export default function App({ session }) {
     valor: '',
     temperatura: 'Frio',
     dataRetorno: '',
-    notes: '',
+    notas: '',
     dados_nicho: {},
     user_id: ''
   });
@@ -613,7 +613,7 @@ export default function App({ session }) {
     setLoadingNotes(true);
     const { data, error } = await supabase
       .from('lead_notes')
-      .select('*, user_roles(email)')
+      .select('*')
       .eq('lead_id', leadId)
       .order('created_at', { ascending: false });
     
@@ -3097,27 +3097,31 @@ export default function App({ session }) {
                       <p className="text-slate-400 text-xs mt-1">Registre cada passo da sua negociação.</p>
                     </div>
                   ) : (
-                    leadNotes.map(note => (
-                      <div key={note.id} className="bg-white p-4 rounded-xl border border-slate-100 shadow-sm shadow-indigo-900/5 relative group">
-                        <button 
-                          onClick={() => handleDeleteNote(note.id)}
-                          className="absolute top-3 right-3 text-slate-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
-                        >
-                          <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
-                        </button>
-                        <p className="text-sm text-slate-700 whitespace-pre-wrap pr-6">{note.nota}</p>
-                        <div className="flex justify-between items-center mt-3">
-                          <p className="text-[10px] text-slate-400 font-bold uppercase">
-                            {new Date(note.created_at).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })}
-                          </p>
-                          {note.user_roles?.email && (
-                            <span className="text-[10px] bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded">
-                              {note.user_roles.email.split('@')[0]}
-                            </span>
-                          )}
+                    leadNotes.map(note => {
+                      const member = teamMembers.find(m => m.id === note.user_id);
+                      const authorEmail = member ? member.email : (note.user_id === session?.user?.id ? session?.user?.email : null);
+                      return (
+                        <div key={note.id} className="bg-white p-4 rounded-xl border border-slate-100 shadow-sm shadow-indigo-900/5 relative group">
+                          <button 
+                            onClick={() => handleDeleteNote(note.id)}
+                            className="absolute top-3 right-3 text-slate-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
+                          >
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                          </button>
+                          <p className="text-sm text-slate-700 whitespace-pre-wrap pr-6">{note.nota}</p>
+                          <div className="flex justify-between items-center mt-3">
+                            <p className="text-[10px] text-slate-400 font-bold uppercase">
+                              {new Date(note.created_at).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })}
+                            </p>
+                            {authorEmail && (
+                              <span className="text-[10px] bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded">
+                                {authorEmail.split('@')[0]}
+                              </span>
+                            )}
+                          </div>
                         </div>
-                      </div>
-                    ))
+                      );
+                    })
                   )}
                 </div>
               </div>
