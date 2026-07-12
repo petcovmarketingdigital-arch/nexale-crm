@@ -465,8 +465,9 @@ export default function App({ session }) {
     valor: '',
     temperatura: 'Frio',
     dataRetorno: '',
-    notas: '',
-    dados_nicho: {}
+    notes: '',
+    dados_nicho: {},
+    user_id: ''
   });
 
   useEffect(() => {
@@ -575,7 +576,8 @@ export default function App({ session }) {
           data_movimentacao: dbLead.data_movimentacao || dbLead.data_criacao,
           origem: dbLead.origem || 'Novo Lead',
           ai_paused: !!dbLead.ai_paused,
-          dados_nicho: dbLead.dados_nicho || {}
+          dados_nicho: dbLead.dados_nicho || {},
+          user_id: dbLead.user_id
         };
         const targetCol = cols.find(c => c.id === dbLead.coluna_id) || cols[0];
         targetCol.cards.push(lead);
@@ -705,14 +707,22 @@ export default function App({ session }) {
             status_amostra: formData.temperatura,
             data_retorno: formData.dataRetorno || null,
             notas: formData.notas,
-            dados_nicho: formData.dados_nicho || {}
+            dados_nicho: formData.dados_nicho || {},
+            user_id: formData.user_id || session.user.id
           }).eq('id', editingCardId);
           
           if (error) throw error;
         } else {
           // NOVO LEAD (MULTI-TENANT)
+          const isAtribuidoOutro = userRole === 'admin' && formData.user_id && formData.user_id !== session.user.id;
+          const origemPadrao = isAtribuidoOutro 
+            ? (companyNiche === 'imobiliaria' ? 'Enviado pela Imobiliária' : 'Enviado pela Empresa')
+            : (userRole === 'vendedor' 
+                ? (companyNiche === 'imobiliaria' ? 'Captação do Corretor' : 'Captação Própria')
+                : 'Novo Lead');
+
           const { data, error } = await supabase.from('leads').insert([{
-            user_id: session.user.id,
+            user_id: formData.user_id || session.user.id,
             company_id: companyId, // VINCULA À EMPRESA CORRETA
             empresa: formData.empresa,
             contato: formData.contato,
@@ -726,7 +736,7 @@ export default function App({ session }) {
             coluna_id: 'leads',
             data_retorno: formData.dataRetorno || null,
             notas: formData.notas,
-            origem: 'Novo Lead',
+            origem: origemPadrao,
             dados_nicho: formData.dados_nicho || {}
           }]).select();
           
@@ -810,7 +820,8 @@ export default function App({ session }) {
       temperatura: card.temperatura || 'Frio',
       dataRetorno: card.dataRetorno ? new Date(card.dataRetorno).toISOString().slice(0, 16) : '',
       notas: card.notas || '',
-      dados_nicho: card.dados_nicho || {}
+      dados_nicho: card.dados_nicho || {},
+      user_id: card.user_id || ''
     });
     setActiveCardAiPaused(!!card.ai_paused);
     setEditingCardId(card.id);
@@ -1576,12 +1587,18 @@ export default function App({ session }) {
             <select
               value={selectedOrigem}
               onChange={(e) => setSelectedOrigem(e.target.value)}
-              className="bg-white border-none rounded text-sm p-1.5 font-semibold text-slate-700 focus:ring-2 focus:ring-indigo-500 cursor-pointer shadow-sm shadow-indigo-900/5 max-w-[150px] truncate"
+              className="bg-white border-none rounded text-sm p-1.5 font-semibold text-slate-700 focus:ring-2 focus:ring-indigo-500 cursor-pointer shadow-sm shadow-indigo-900/5 max-w-[180px] truncate"
             >
               <option value="all">Todas as Origens</option>
               <option value="Novo Lead">Novo Lead</option>
               <option value="Captação B2B">Captação B2B</option>
               <option value="Link de WhatsApp">Link de WhatsApp</option>
+              <option value={companyNiche === 'imobiliaria' ? 'Enviado pela Imobiliária' : 'Enviado pela Empresa'}>
+                {companyNiche === 'imobiliaria' ? 'Enviado pela Imobiliária' : 'Enviado pela Empresa'}
+              </option>
+              <option value={companyNiche === 'imobiliaria' ? 'Captação do Corretor' : 'Captação Própria'}>
+                {companyNiche === 'imobiliaria' ? 'Captação do Corretor' : 'Captação Própria'}
+              </option>
             </select>
           </div>
 
@@ -1671,7 +1688,7 @@ export default function App({ session }) {
           <button 
             onClick={() => {
               setEditingCardId(null);
-              setFormData({ empresa: '', contato: '', telefone: '', email: '', tipo: 'B2B', observacao: '', valor: '', temperatura: 'Frio', dataRetorno: '', notas: '' });
+              setFormData({ empresa: '', contato: '', telefone: '', email: '', tipo: 'B2B', observacao: '', valor: '', temperatura: 'Frio', dataRetorno: '', notas: '', dados_nicho: {}, user_id: session?.user?.id || '' });
               setLeadNotes([]);
               setShowModal(true);
             }}
@@ -1879,6 +1896,8 @@ export default function App({ session }) {
                               <span className={`text-[10px] font-bold uppercase px-2 py-1 rounded-md ${
                                 card.origem === 'Captação B2B' ? 'bg-indigo-100 text-indigo-700' :
                                 card.origem === 'Link de WhatsApp' ? 'bg-emerald-100 text-emerald-700' :
+                                card.origem.includes('Enviado') ? 'bg-blue-100 text-blue-700' :
+                                card.origem.includes('Captação') ? 'bg-amber-100 text-amber-700' :
                                 'bg-slate-100 text-slate-700'
                               }`}>
                                 {card.origem || 'Novo Lead'}
@@ -1957,13 +1976,31 @@ export default function App({ session }) {
 
 
 
-                          <div className="flex justify-between items-end border-t border-slate-100 pt-3">
-                            <span className={`text-[10px] font-bold px-2 py-1 rounded-md ${
-                              card.temperatura === 'Quente' ? 'bg-orange-100 text-orange-700' :
-                              card.temperatura === 'Morno' ? 'bg-amber-100 text-amber-700' : 'bg-indigo-50 text-indigo-600'
-                            }`}>
-                              {card.temperatura === 'Frio' ? '❄️' : card.temperatura === 'Morno' ? '☕' : '🔥'} {card.temperatura}
-                            </span>
+                          <div className="flex justify-between items-center border-t border-slate-100 pt-3 flex-wrap gap-2">
+                            <div className="flex items-center gap-2">
+                              <span className={`text-[10px] font-bold px-2 py-1 rounded-md ${
+                                card.temperatura === 'Quente' ? 'bg-orange-100 text-orange-700' :
+                                card.temperatura === 'Morno' ? 'bg-amber-100 text-amber-700' : 'bg-indigo-50 text-indigo-600'
+                              }`}>
+                                {card.temperatura === 'Frio' ? '❄️' : card.temperatura === 'Morno' ? '☕' : '🔥'} {card.temperatura}
+                              </span>
+
+                              {userRole === 'admin' && card.user_id && (
+                                (() => {
+                                  const member = teamMembers.find(m => m.id === card.user_id);
+                                  const initials = member ? member.email.substring(0, 2).toUpperCase() : '??';
+                                  const colorClass = member ? 'bg-indigo-600 text-white' : 'bg-slate-200 text-slate-500';
+                                  return (
+                                    <span 
+                                      className={`text-[9px] font-black w-5 h-5 rounded-full flex items-center justify-center shadow-sm select-none ${colorClass}`} 
+                                      title={member ? `Responsável: ${member.email}` : 'Responsável não encontrado'}
+                                    >
+                                      {initials}
+                                    </span>
+                                  );
+                                })()
+                              )}
+                            </div>
                             <span className="text-[13px] font-black text-slate-800">R$ {Number(card.valor).toLocaleString('pt-BR')}</span>
                           </div>
 
@@ -2035,8 +2072,21 @@ export default function App({ session }) {
           const allContacts = campTab === 'crm' ? crmContacts : campTab === 'externa' ? externalContacts : [...crmContacts, ...externalContacts];
           if (allContacts.length === 0) { alert('Selecione ao menos um contato para disparar.'); return; }
           
+          // Prepara a mensagem empacotando o anexo caso ele exista
+          let payloadMessage = campMsg;
+          if (campAttachment) {
+            payloadMessage = JSON.stringify({
+              text: campMsg,
+              attachment: {
+                name: campAttachment.name,
+                type: campAttachment.type,
+                mimetype: campAttachment.mimetype,
+                base64: campAttachment.base64
+              }
+            });
+          }
+
           if (campMode === 'agendar') {
-            if (campAttachment) { alert('Não é possível agendar campanhas com anexo de arquivo ou áudio.'); return; }
             if (!campDate) { alert('Selecione uma data e hora para agendar.'); return; }
             const scheduleTime = new Date(campDate);
             if (scheduleTime <= new Date()) { alert('A data de agendamento deve ser no futuro.'); return; }
@@ -2049,13 +2099,14 @@ export default function App({ session }) {
                 status: 'pendente',
                 scheduled_for: scheduleTime.toISOString(),
                 contacts: allContacts,
-                message: campMsg,
+                message: payloadMessage,
                 delay: campDelay
               });
               if (error) throw error;
               alert('Campanha agendada com sucesso! O sistema fará o disparo no servidor.');
               setCampMsg('');
               setCampSelectedLeads([]);
+              setCampAttachment(null);
             } catch (err) {
               console.error('Erro ao agendar:', err);
               alert(`Erro ao agendar campanha: ${err.message || 'Verifique o console'}`);
@@ -2063,38 +2114,81 @@ export default function App({ session }) {
             return;
           }
 
-          if (!window.confirm(`Você vai disparar AGORA para ${allContacts.length} contatos com intervalo de ${campDelay}s entre cada envio. Confirmar?`)) return;
+          // Se for disparo imediato
+          if (!window.confirm(`Disparar AGORA para ${allContacts.length} contatos? O envio será processado com segurança no servidor e você poderá fechar a aba.`)) return;
 
           setCampRunning(true);
           setCampProgress({ sent: 0, total: allContacts.length, log: [] });
 
-          for (let i = 0; i < allContacts.length; i++) {
-            const contact = allContacts[i];
-            try {
-              const msg = campMsg.trim() ? campMsg.replace(/\{\{nome\}\}/gi, contact.nome) : '';
-              
-              if (campAttachment) {
-                await sendWahaMedia(
-                  contact.telefone,
-                  campAttachment.type,
-                  campAttachment.mimetype,
-                  campAttachment.base64,
-                  campAttachment.name,
-                  msg
-                );
-              } else {
-                if (msg) {
-                  await sendWahaMessage(contact.telefone, msg);
+          try {
+            // Insere campanha imediata no banco (scheduled_for = agora)
+            const { data, error } = await supabase.from('campaigns').insert({
+              company_id: companyId,
+              user_id: session.user.id,
+              status: 'pendente',
+              scheduled_for: new Date().toISOString(),
+              contacts: allContacts,
+              message: payloadMessage,
+              delay: campDelay
+            }).select('id').single();
+
+            if (error) throw error;
+            const campaignId = data.id;
+
+            // Escuta atualizações de progresso no banco via polling a cada 3 segundos
+            const interval = setInterval(async () => {
+              try {
+                const { data: camp, error: fetchErr } = await supabase
+                  .from('campaigns')
+                  .select('status, completed_at')
+                  .eq('id', campaignId)
+                  .single();
+
+                if (fetchErr) {
+                  console.error(fetchErr);
+                  return;
                 }
+
+                if (camp.status === 'concluido') {
+                  clearInterval(interval);
+                  setCampProgress(prev => ({ ...prev, sent: prev.total, log: [{ nome: 'Sistema', telefone: 'Finalizado', status: '✅ Campanha concluída com sucesso!' }, ...prev.log] }));
+                  setCampRunning(false);
+                  setCampAttachment(null);
+                } else if (camp.status.startsWith('enviando:')) {
+                  // Parse: enviando:sent/total|nome|telefone|status
+                  const parts = camp.status.split(':');
+                  const progressData = parts.slice(1).join(':'); // garante lidar com colons internos se houver
+                  if (progressData) {
+                    const [counts, nome, telefone, msgStatus] = progressData.split('|');
+                    const [sent, total] = counts.split('/').map(Number);
+                    
+                    setCampProgress(prev => {
+                      // Evita duplicar logs idênticos de contatos
+                      const alreadyLogged = prev.log.some(l => l.telefone === telefone && l.status.includes(msgStatus === 'sucesso' ? 'Enviado' : 'Erro'));
+                      const newLog = alreadyLogged ? prev.log : [{
+                        nome: nome || 'Cliente',
+                        telefone: telefone || '',
+                        status: msgStatus === 'sucesso' ? '✅ Enviado (Servidor)' : '❌ Erro no envio'
+                      }, ...prev.log];
+
+                      return {
+                        sent: sent || prev.sent,
+                        total: total || prev.total,
+                        log: newLog
+                      };
+                    });
+                  }
+                }
+              } catch (pollErr) {
+                console.error('Erro no polling da campanha:', pollErr);
               }
-              setCampProgress(prev => ({ ...prev, sent: i + 1, log: [{ nome: contact.nome, telefone: contact.telefone, status: '✅ Enviado' }, ...prev.log] }));
-            } catch(e) {
-              console.error(e);
-              setCampProgress(prev => ({ ...prev, sent: i + 1, log: [{ nome: contact.nome, telefone: contact.telefone, status: `❌ Erro: ${e.message}` }, ...prev.log] }));
-            }
-            if (i < allContacts.length - 1) await new Promise(r => setTimeout(r, campDelay * 1000));
+            }, 3000);
+
+          } catch (err) {
+            console.error('Erro ao iniciar campanha no servidor:', err);
+            alert(`Erro ao iniciar campanha: ${err.message || 'Verifique o console'}`);
+            setCampRunning(false);
           }
-          setCampRunning(false);
         };
 
         return (
@@ -2802,6 +2896,24 @@ export default function App({ session }) {
               )}
 
               <form onSubmit={handleSaveLead} className="space-y-5">
+                {userRole === 'admin' && (
+                  <div>
+                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1">
+                      {companyNiche === 'imobiliaria' ? 'Corretor Responsável' : companyNiche === 'estetica' ? 'Profissional Responsável' : 'Responsável pelo Lead'}
+                    </label>
+                    <select
+                      value={formData.user_id || session?.user?.id || ''}
+                      onChange={e => setFormData({...formData, user_id: e.target.value})}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all cursor-pointer font-semibold text-slate-700"
+                    >
+                      <option value={session.user.id}>Você ({session.user.email})</option>
+                      {teamMembers.filter(m => m.id !== session.user.id).map(m => (
+                        <option key={m.id} value={m.id}>{m.email}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
                 <div>
                   <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Empresa / Razão Social</label>
                   <input type="text" required value={formData.empresa} onChange={e => setFormData({...formData, empresa: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all" />
