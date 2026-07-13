@@ -29,6 +29,9 @@ const app = express();
 app.use(cors({ origin: '*' }));
 app.use(express.json());
 
+// Servir arquivos públicos (guia anti-ban, etc.)
+app.use('/public', express.static(path.join(__dirname, 'public')));
+
 
 // Supabase Connection
 const supabaseUrl = 'https://zdlybiifkambebscydsp.supabase.co';
@@ -44,10 +47,58 @@ const supabaseAdmin = createClient(supabaseUrl, SUPABASE_SERVICE_ROLE, {
   realtime: { transport: WebSocket }
 });
 
-// Evolution API Helper
-const sendWahaMessage = async (companyId, phoneNumber, text) => {
+// ==========================================
+// UTILITÁRIOS DE SEGURANÇA ANTI-BAN
+// ==========================================
+
+/**
+ * Gera um delay aleatório entre minMs e maxMs milissegundos.
+ * Delays aleatórios imitam comportamento humano e reduzem detecção de bot.
+ */
+const randomDelay = (minMs, maxMs) => {
+  const ms = Math.floor(Math.random() * (maxMs - minMs + 1)) + minMs;
+  console.log(`  ⏱️  Aguardando ${(ms / 1000).toFixed(1)}s (anti-ban)...`);
+  return new Promise(r => setTimeout(r, ms));
+};
+
+/**
+ * Simula presença ativa e digitação no WhatsApp antes de enviar a mensagem.
+ * Isso imita o comportamento humano de abrir a conversa e digitar.
+ */
+const simulateTyping = async (companyId, phoneNumber, durationMs) => {
   const clean = phoneNumber.replace(/\D/g, '');
-  
+  try {
+    // Sinaliza presença online
+    await fetch(`http://localhost:8080/chat/updatePresence/${companyId}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'apikey': '123' },
+      body: JSON.stringify({ number: clean, presence: 'composing' })
+    });
+    // Aguarda o tempo de "digitação" antes de enviar
+    await new Promise(r => setTimeout(r, durationMs));
+    // Volta ao status "disponível"
+    await fetch(`http://localhost:8080/chat/updatePresence/${companyId}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'apikey': '123' },
+      body: JSON.stringify({ number: clean, presence: 'paused' })
+    });
+  } catch (e) {
+    // Não bloqueia o envio se a simulação falhar (endpoint pode não existir em todas as versões)
+    console.warn(`  ⚠️  Simulação de digitação falhou (não bloqueante): ${e.message}`);
+  }
+};
+
+// Evolution API Helper — com simulação de digitação integrada
+const sendWahaMessage = async (companyId, phoneNumber, text) => {
+  let clean = phoneNumber.replace(/\D/g, '');
+  if (clean.length === 10 || clean.length === 11) {
+    clean = '55' + clean;
+  }
+
+  // Simula digitação por 2 a 5 segundos antes de enviar (imita humano)
+  const typingDuration = Math.floor(Math.random() * 3000) + 2000;
+  await simulateTyping(companyId, clean, typingDuration);
+
   const sendRes = await fetch(`http://localhost:8080/message/sendText/${companyId}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'apikey': '123' },
@@ -56,6 +107,36 @@ const sendWahaMessage = async (companyId, phoneNumber, text) => {
   
   if (!sendRes.ok) throw new Error(`Evolution API returned ${sendRes.status}`);
   return sendRes;
+};
+
+const sendWahaMedia = async (companyId, phoneNumber, mediaType, mimeType, base64Media, fileName, caption = "") => {
+  let clean = phoneNumber.replace(/\D/g, '');
+  if (clean.length === 10 || clean.length === 11) {
+    clean = '55' + clean;
+  }
+  const rawBase64 = base64Media.includes('base64,') ? base64Media.split('base64,')[1] : base64Media;
+  
+  // Simula digitação por 2 a 5 segundos antes de enviar (imita humano)
+  const typingDuration = Math.floor(Math.random() * 3000) + 2000;
+  await simulateTyping(companyId, clean, typingDuration);
+
+  const res = await fetch(`http://localhost:8080/message/sendMedia/${companyId}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'apikey': '123' },
+    body: JSON.stringify({
+      number: clean,
+      mediatype: mediaType,
+      mimetype: mimeType,
+      media: rawBase64,
+      fileName: fileName,
+      caption: caption
+    })
+  });
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(`Evolution API returned ${res.status}: ${err}`);
+  }
+  return res;
 };
 
 // Helper to resolve Brazilian phone variants (with/without DDI 55, with/without extra 9)
@@ -101,29 +182,96 @@ async function processCampaigns() {
     console.log(`Found ${campaigns.length} campaigns to process.`);
 
     for (const campaign of campaigns) {
-      console.log(`Processing campaign ${campaign.id}...`);
+      console.log(`\n🚀 Iniciando campanha ${campaign.id}...`);
       
       // Marcar como enviando
       await supabaseAdmin.from('campaigns').update({ status: 'enviando' }).eq('id', campaign.id);
       
       const contacts = campaign.contacts;
-      const delayMs = (campaign.delay || 20) * 1000;
+
+      // ── Configuração de delay anti-ban ──────────────────────────────────────
+      // delayMin: delay base configurado pelo usuário (padrão 20s), em milissegundos
+      // delayMax: delay base + até 25 segundos extras aleatórios
+      // Isso garante variação natural e imprevisível entre cada envio.
+      const delayMinMs = (campaign.delay || 20) * 1000;
+      const delayMaxMs = delayMinMs + 25000;
+
+      // A cada BATCH_SIZE mensagens, o worker faz uma pausa longa (BATCH_PAUSE_MS)
+      // simulando um humano que para para tomar um café ou atender outra coisa.
+      const BATCH_SIZE = 50;
+      const BATCH_PAUSE_MIN_MS = 10 * 60 * 1000; // 10 minutos
+      const BATCH_PAUSE_MAX_MS = 15 * 60 * 1000; // 15 minutos
+      // ────────────────────────────────────────────────────────────────────────
+
       let successCount = 0;
 
       for (let i = 0; i < contacts.length; i++) {
         const contact = contacts[i];
-        const msg = campaign.message.replace(/\{\{nome\}\}/gi, contact.nome);
         
-        try {
-          await sendWahaMessage(campaign.company_id, contact.telefone, msg);
-          successCount++;
-          console.log(`  Sent to ${contact.telefone} (${i+1}/${contacts.length})`);
-        } catch (e) {
-          console.error(`  Failed for ${contact.telefone}: ${e.message}`);
+        let messageText = '';
+        let mediaAttachment = null;
+
+        // Tenta fazer o parse para ver se a mensagem é um JSON contendo anexo
+        const trimmedMsg = campaign.message.trim();
+        if (trimmedMsg.startsWith('{') && trimmedMsg.endsWith('}')) {
+          try {
+            const parsed = JSON.parse(campaign.message);
+            messageText = parsed.text || '';
+            mediaAttachment = parsed.attachment || null;
+          } catch(e) {
+            messageText = campaign.message;
+          }
+        } else {
+          messageText = campaign.message;
         }
 
+        const msg = messageText.replace(/\{\{nome\}\}/gi, contact.nome);
+        
+        let messageStatus = 'sucesso';
+        try {
+          if (mediaAttachment) {
+            await sendWahaMedia(
+              campaign.company_id,
+              contact.telefone,
+              mediaAttachment.type,
+              mediaAttachment.mimetype,
+              mediaAttachment.base64,
+              mediaAttachment.name,
+              msg
+            );
+          } else {
+            await sendWahaMessage(campaign.company_id, contact.telefone, msg);
+          }
+          successCount++;
+          console.log(`  ✅ Enviado para ${contact.telefone} (${i+1}/${contacts.length})`);
+        } catch (e) {
+          messageStatus = 'erro';
+          console.error(`  ❌ Falha para ${contact.telefone}: ${e.message}`);
+        }
+
+        // Atualiza progresso em tempo real no banco
+        try {
+          await supabaseAdmin.from('campaigns').update({
+            status: `enviando:${i+1}/${contacts.length}|${contact.nome}|${contact.telefone}|${messageStatus}`
+          }).eq('id', campaign.id);
+        } catch (dbErr) {
+          console.error('Erro ao atualizar progresso no banco:', dbErr.message);
+        }
+
+        // Não aplica delay após a última mensagem
         if (i < contacts.length - 1) {
-          await new Promise(r => setTimeout(r, delayMs));
+
+          // ── PAUSA DE LOTE: a cada BATCH_SIZE envios, pausa longa ──────────
+          const isEndOfBatch = (i + 1) % BATCH_SIZE === 0;
+          if (isEndOfBatch) {
+            const batchPauseMs = Math.floor(Math.random() * (BATCH_PAUSE_MAX_MS - BATCH_PAUSE_MIN_MS + 1)) + BATCH_PAUSE_MIN_MS;
+            const batchPauseMin = (batchPauseMs / 60000).toFixed(1);
+            console.log(`\n  🛡️  [ANTI-BAN] Lote de ${BATCH_SIZE} msgs concluído. Pausando por ${batchPauseMin} minutos para proteger o número...\n`);
+            await new Promise(r => setTimeout(r, batchPauseMs));
+          } else {
+            // ── DELAY ALEATÓRIO entre mensagens individuais ───────────────
+            await randomDelay(delayMinMs, delayMaxMs);
+          }
         }
       }
 
@@ -133,7 +281,7 @@ async function processCampaigns() {
         completed_at: new Date().toISOString() 
       }).eq('id', campaign.id);
       
-      console.log(`Campaign ${campaign.id} finished. Sent ${successCount}/${contacts.length}.`);
+      console.log(`\n✅ Campanha ${campaign.id} finalizada. Enviados: ${successCount}/${contacts.length}.`);
     }
 
   } catch (err) {
@@ -174,7 +322,7 @@ async function respondWithGemini(companyId, leadId, phone, textContent, aiPrompt
     const prompt = `Instruções de comportamento:\n${systemInstruction}\n\nHistórico de mensagens anteriores:\n${historyText}\n\nMensagem atual do cliente: ${textContent}\nAtendente (IA):`;
 
     console.log(`🤖 Chamando API do Gemini com o prompt...`);
-    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${aiApiKey}`, {
+    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent?key=${aiApiKey}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -527,11 +675,78 @@ app.post('/asaas-webhook', async (req, res) => {
       console.error('❌ Erro ao atualizar assinatura da empresa:', updateErr.message);
     } else {
       console.log(`✅ Assinatura da empresa "${company.name}" atualizada com sucesso para ${newExpiryDate.toISOString()} (${matchedPlan})`);
+
+      // ── Dispara mensagem de boas-vindas automática ao novo assinante ──
+      if (customerDetails && customerDetails.mobilePhone) {
+        const nomeCliente = customerDetails.name || company.name || 'Cliente';
+        const phone = customerDetails.mobilePhone.replace(/\D/g, '');
+        sendWelcomeMessage('superadmin', phone, nomeCliente, 'assinante').catch(e =>
+          console.warn('⚠️ Falha ao enviar boas-vindas (Asaas):', e.message)
+        );
+      }
     }
 
   } catch (err) {
     console.error('❌ Erro crítico no processamento do webhook do Asaas:', err.message);
   }
+});
+
+// ==========================================
+// SISTEMA DE BOAS-VINDAS AUTOMÁTICO
+// ==========================================
+
+const GUIDE_URL = `https://app.nexalecrm.com.br/guia-antiban-nexale.html`;
+
+/**
+ * Envia sequência de boas-vindas via WhatsApp para um novo usuário.
+ * @param {string} companyId - ID da instância Evolution API
+ * @param {string} phone     - Número do cliente (só dígitos)
+ * @param {string} nome      - Nome do cliente
+ * @param {string} tipo      - 'trial' ou 'assinante'
+ */
+async function sendWelcomeMessage(companyId, phone, nome, tipo) {
+  const primeiroNome = nome.split(' ')[0];
+  const isTrial = tipo === 'trial';
+
+  const msgs = [
+    `🎉 Olá, ${primeiroNome}! Seja bem-vindo ao *Nexale CRM*!\n\n${
+      isTrial
+        ? 'Seu período de teste de *14 dias* está ativo. Fique à vontade para explorar todas as funcionalidades!'
+        : `Sua assinatura está confirmada e ativa. Obrigado por confiar no Nexale CRM! 🚀`
+    }`,
+    `📋 *Antes de começar*, leia nosso *Guia de Boas Práticas Anti-Ban*. Ele é essencial para manter seu número do WhatsApp seguro e com alta capacidade de envio.\n\n🔗 Acesse aqui: ${GUIDE_URL}`,
+    `✅ *Próximos passos:*\n\n1️⃣ Prepare um número de WhatsApp exclusivo para o CRM\n2️⃣ Leia o guia completo (link acima)\n3️⃣ Escaneie o QR Code no painel para conectar\n4️⃣ Configure a IA com as instruções do seu negócio\n\nQualquer dúvida, é só chamar! 😊`
+  ];
+
+  for (let i = 0; i < msgs.length; i++) {
+    // Pequena pausa entre as mensagens para não parecer spam
+    if (i > 0) await new Promise(r => setTimeout(r, 3000));
+    try {
+      await sendWahaMessage(companyId, phone, msgs[i]);
+      console.log(`  ✅ Boas-vindas msg ${i + 1}/3 enviada para ${phone}`);
+    } catch (e) {
+      console.warn(`  ⚠️ Falha na msg ${i + 1}/3 para ${phone}: ${e.message}`);
+    }
+  }
+
+  console.log(`🎉 Sequência de boas-vindas concluída para ${primeiroNome} (${phone})`);
+}
+
+// Endpoint chamado pelo Auth.jsx após signup (trial)
+app.post('/enviar-boas-vindas', async (req, res) => {
+  const { phone, nome, companyId, tipo } = req.body;
+
+  if (!phone || !nome || !companyId) {
+    return res.status(400).json({ error: 'phone, nome e companyId são obrigatórios.' });
+  }
+
+  // Responde imediatamente (não bloqueia o cadastro)
+  res.status(200).json({ ok: true, message: 'Boas-vindas agendadas!' });
+
+  // Dispara em background
+  sendWelcomeMessage(companyId, phone, nome, tipo || 'trial').catch(e =>
+    console.warn('⚠️ Erro no envio de boas-vindas (endpoint):', e.message)
+  );
 });
 
 // ==========================================
