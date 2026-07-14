@@ -8,17 +8,8 @@ export default defineConfig({
     tailwindcss(),
     react(),
     VitePWA({
-      registerType: 'prompt',
+      selfDestroying: true,
       includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'masked-icon.svg'],
-      workbox: {
-        navigateFallbackDenylist: [/^\/evolution/, /^\/api/],
-        runtimeCaching: [
-          {
-            urlPattern: /^\/evolution.*/,
-            handler: 'NetworkOnly'
-          }
-        ]
-      },
       manifest: {
         name: 'Nexale CRM',
         short_name: 'Nexale',

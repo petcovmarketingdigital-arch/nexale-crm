@@ -65,6 +65,23 @@ export default function Auth({ onLogin }) {
         });
         
         if (error) throw error;
+
+        // Dispara boas-vindas automáticas via WhatsApp para novos gerentes (trial)
+        if (signupType === 'manager' && phone) {
+          // Busca o companyId recém-criado para passar ao worker
+          // Usa o e-mail como identificador — o worker buscará no banco
+          fetch('/enviar-boas-vindas', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              phone:     phone.replace(/\D/g, ''),
+              nome:      companyName,
+              companyId: 'superadmin', // instância principal do Evolution API
+              tipo:      'trial'
+            })
+          }).catch(() => {}); // silencioso — não bloqueia o cadastro
+        }
+
         alert('Cadastro realizado com sucesso! Você já pode acessar o sistema.');
         if (data.session) onLogin(data.session);
       }

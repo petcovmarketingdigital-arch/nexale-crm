@@ -6,6 +6,7 @@ import Auth from './Auth.jsx'
 import CaptacaoPage from './CaptacaoPage.jsx'
 import { supabase } from './supabaseClient'
 
+
 // ─── Rota pública /captar/:vendedorId ─────────────────────────────────────────
 const captacaoMatch = window.location.pathname.match(/^\/captar\/([^/]+)$/);
 if (captacaoMatch) {
@@ -18,9 +19,11 @@ if (captacaoMatch) {
 } else {
 
 
+const isInitialRecovery = typeof window !== 'undefined' && (window.location.hash.includes('type=recovery') || window.location.href.includes('type=recovery'));
+
 function Root() {
   const [session, setSession] = useState(null)
-  const [recoveryMode, setRecoveryMode] = useState(false)
+  const [recoveryMode, setRecoveryMode] = useState(isInitialRecovery)
   const [newPassword, setNewPassword] = useState('')
   const [loading, setLoading] = useState(false)
 
