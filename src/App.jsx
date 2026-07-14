@@ -1040,6 +1040,7 @@ export default function App({ session }) {
             if (data.message_templates.ai_enabled !== undefined) setAiEnabled(!!data.message_templates.ai_enabled);
             if (data.message_templates.ai_prompt !== undefined) setAiPrompt(data.message_templates.ai_prompt || 'Você é um atendente simpático da nossa empresa.');
             if (data.message_templates.ai_api_key !== undefined) setAiApiKey(data.message_templates.ai_api_key || '');
+            if (data.message_templates.whatsapp_trigger_phrase !== undefined) setTriggerPhrase(data.message_templates.whatsapp_trigger_phrase || 'Olá, vi seu anúncio e gostaria de mais informações!');
           }
         }
       } catch (err) {
@@ -1309,7 +1310,8 @@ export default function App({ session }) {
         ...messageTemplates, 
         ai_enabled: aiEnabled,
         ai_prompt: aiPrompt,
-        ai_api_key: aiApiKey
+        ai_api_key: aiApiKey,
+        whatsapp_trigger_phrase: triggerPhrase
       };
       const { error } = await supabase.from('companies').update({ message_templates: newTemplates }).eq('id', activeId);
       if (error) throw error;
@@ -2702,6 +2704,20 @@ export default function App({ session }) {
               />
               <p className="text-[10px] text-slate-400">
                 Obtenha uma chave gratuita acessando o <a href="https://aistudio.google.com/" target="_blank" rel="noreferrer" className="text-indigo-600 underline font-bold">Google AI Studio</a>.
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <label className="block text-xs font-bold text-slate-600 uppercase">Frase Gatilho do WhatsApp</label>
+              <input
+                type="text"
+                value={triggerPhrase}
+                onChange={(e) => setTriggerPhrase(e.target.value)}
+                placeholder="Ex: Olá, vi seu anúncio e gostaria de mais informações!"
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all font-semibold"
+              />
+              <p className="text-[10px] text-slate-400">
+                O robô de atendimento só será ativado para novos contatos caso a mensagem deles contiver exatamente esta frase. Deixe em branco se quiser desativar a proteção (não recomendado).
               </p>
             </div>
 
