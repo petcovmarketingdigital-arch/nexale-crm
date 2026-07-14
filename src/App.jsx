@@ -686,11 +686,27 @@ export default function App({ session }) {
         window.dispatchEvent(new Event('sa-companies-changed'));
       } else {
         if (editingCardId) {
+          // Busca a origem atual do card para mantê-la ou atualizá-la
+          let origemAtual = '';
+          for (const col of columns) {
+            const foundCard = col.cards.find(c => c.id === editingCardId);
+            if (foundCard) {
+              origemAtual = foundCard.origem || 'Novo Lead';
+              break;
+            }
+          }
+
+          let novaOrigem = origemAtual;
+          const isAtribuidoOutro = userRole === 'admin' && formData.user_id && formData.user_id !== session.user.id;
+          if (isAtribuidoOutro) {
+            novaOrigem = companyNiche === 'imobiliaria' ? 'Enviado pela Imobiliária' : 'Enviado pela Empresa';
+          }
+
           setColumns(columns.map(col => ({
             ...col,
             cards: col.cards.map(c => 
               c.id === editingCardId 
-                ? { ...c, ...formData, valor: valorOportunidade }
+                ? { ...c, ...formData, valor: valorOportunidade, origem: novaOrigem }
                 : c
             )
           })));
@@ -708,7 +724,8 @@ export default function App({ session }) {
             data_retorno: formData.dataRetorno || null,
             notas: formData.notas,
             dados_nicho: formData.dados_nicho || {},
-            user_id: formData.user_id || session.user.id
+            user_id: formData.user_id || session.user.id,
+            origem: novaOrigem
           }).eq('id', editingCardId);
           
           if (error) throw error;
@@ -1595,6 +1612,7 @@ export default function App({ session }) {
               <option value="Novo Lead">Novo Lead</option>
               <option value="Captação B2B">Captação B2B</option>
               <option value="Link de WhatsApp">Link de WhatsApp</option>
+              <option value="Landing Page">Landing Page</option>
               <option value={companyNiche === 'imobiliaria' ? 'Enviado pela Imobiliária' : 'Enviado pela Empresa'}>
                 {companyNiche === 'imobiliaria' ? 'Enviado pela Imobiliária' : 'Enviado pela Empresa'}
               </option>
