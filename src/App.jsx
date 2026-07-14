@@ -1718,10 +1718,11 @@ export default function App({ session }) {
           </button>
           <button 
             onClick={() => supabase.auth.signOut()}
-            className="text-slate-400 hover:text-red-500 text-sm font-medium transition-colors ml-1 p-1 bg-slate-50 rounded-lg hover:bg-red-50"
+            className="text-slate-400 hover:text-red-500 text-[9px] font-black uppercase tracking-wider transition-colors ml-1 px-2.5 py-1 bg-slate-50 rounded-lg hover:bg-red-50 flex flex-col items-center justify-center gap-0.5 border border-slate-100/60"
             title="Sair do Sistema"
           >
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" /></svg>
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" /></svg>
+            <span>Sair</span>
           </button>
         </div>
       </div>
