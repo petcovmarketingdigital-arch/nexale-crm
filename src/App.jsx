@@ -362,6 +362,7 @@ export default function App({ session }) {
     ganhou: 'Olá {{nome}}! 🎉 Muito obrigado pelo fechamento! É uma honra ter você como nosso cliente. Qualquer dúvida, pode me chamar!'
   });
   const [triggerPhrase, setTriggerPhrase] = useState('Olá, vi seu anúncio e gostaria de mais informações!');
+  const [activeMobileCol, setActiveMobileCol] = useState('leads');
   const [showLinkModal, setShowLinkModal] = useState(false);
   const [companyPhone, setCompanyPhone] = useState('');
 
@@ -1834,16 +1835,50 @@ export default function App({ session }) {
             </div>
           </div>
 
+          {/* Seletor de Abas Móvel para o Kanban */}
+          <div className="flex md:hidden overflow-x-auto gap-2 pb-3 mb-4 scrollbar-none justify-start px-1 border-b border-slate-100">
+            {columns.map((column) => {
+              const isActive = activeMobileCol === column.id;
+              const count = column.cards.length;
+              
+              let badgeBg = isActive ? 'bg-indigo-500 text-white' : 'bg-slate-100 text-slate-500';
+              if (column.id === 'ganhou') badgeBg = isActive ? 'bg-green-500 text-white' : 'bg-green-50 text-green-700';
+              if (column.id === 'perdido') badgeBg = isActive ? 'bg-red-500 text-white' : 'bg-red-50 text-red-700';
+
+              return (
+                <button
+                  key={column.id}
+                  onClick={() => setActiveMobileCol(column.id)}
+                  className={`flex-shrink-0 px-3.5 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all flex items-center gap-1.5 border cursor-pointer ${
+                    isActive 
+                      ? (column.id === 'ganhou' ? 'bg-green-600 border-green-600 text-white shadow-md shadow-green-600/10' :
+                         column.id === 'perdido' ? 'bg-red-600 border-red-600 text-white shadow-md shadow-red-600/10' :
+                         'bg-indigo-600 border-indigo-600 text-white shadow-md shadow-indigo-600/10')
+                      : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300'
+                  }`}
+                >
+                  {column.id === 'ganhou' ? '🏆 ' : column.id === 'perdido' ? '💔 ' : ''}
+                  {column.title.split(' ')[0]}
+                  <span className={`px-1.5 py-0.5 rounded-full text-[9px] font-bold ${badgeBg}`}>
+                    {count}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+
           <div className="flex overflow-x-auto pb-4 gap-4 items-start minimal-scrollbar h-[calc(100dvh-250px)] min-h-[500px]">
             {columns.map((column, colIndex) => (
               <div 
                 key={column.id} 
-                className={`p-3 rounded-xl min-w-[280px] max-w-[280px] flex-shrink-0 border flex flex-col h-full ${
+                className={`p-3 rounded-xl w-full md:min-w-[280px] md:max-w-[280px] flex-shrink-0 border flex flex-col h-full ${
                   column.id === 'perdido' 
                     ? 'bg-red-50/80 border-red-200/60' 
                     : column.id === 'ganhou'
                     ? 'bg-green-50/80 border-green-200/60'
                     : 'bg-slate-100/80 border-slate-200/60'
+                } ${
+                  column.id === activeMobileCol ? 'flex' : 'hidden md:flex'
                 }`}
                 onDragOver={handleDragOver}
                 onDrop={(e) => handleDrop(e, column.id)}
@@ -1924,7 +1959,7 @@ export default function App({ session }) {
                                 {card.origem || 'Novo Lead'}
                               </span>
                             </div>
-                            <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <div className="flex items-center gap-1 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
                               <button onClick={() => handleEditClick(card)} className="text-slate-400 hover:text-indigo-500 p-1 bg-slate-50 rounded" title="Editar lead">
                                 <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>
                               </button>
