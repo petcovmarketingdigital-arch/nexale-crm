@@ -1729,7 +1729,7 @@ export default function App({ session }) {
       </div>
 
       {/* Banner de Assinatura / Trial */}
-      {userRole !== 'vendedor' && (
+      {userRole !== 'vendedor' && userRole !== 'superadmin' && (
         <div className={`mb-6 rounded-lg p-3 text-sm flex items-center justify-between shadow-sm border ${daysRemaining <= 3 ? 'bg-orange-50 border-orange-200 text-orange-800' : 'bg-indigo-50 border-indigo-100 text-indigo-800'}`}>
           <div className="flex items-center gap-2">
             <span className="text-lg">{daysRemaining <= 3 ? '⚠️' : '⏳'}</span>
