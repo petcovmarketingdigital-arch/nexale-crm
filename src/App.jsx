@@ -697,7 +697,7 @@ export default function App({ session }) {
           }
 
           let novaOrigem = origemAtual;
-          const isAtribuidoOutro = userRole === 'admin' && formData.user_id && formData.user_id !== session.user.id;
+          const isAtribuidoOutro = formData.user_id && formData.user_id !== session.user.id;
           if (isAtribuidoOutro) {
             novaOrigem = companyNiche === 'imobiliaria' ? 'Enviado pela Imobiliária' : 'Enviado pela Empresa';
           }
@@ -731,7 +731,7 @@ export default function App({ session }) {
           if (error) throw error;
         } else {
           // NOVO LEAD (MULTI-TENANT)
-          const isAtribuidoOutro = userRole === 'admin' && formData.user_id && formData.user_id !== session.user.id;
+          const isAtribuidoOutro = formData.user_id && formData.user_id !== session.user.id;
           const origemPadrao = isAtribuidoOutro 
             ? (companyNiche === 'imobiliaria' ? 'Enviado pela Imobiliária' : 'Enviado pela Empresa')
             : (userRole === 'vendedor' 
