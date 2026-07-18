@@ -1478,7 +1478,7 @@ export default function App({ session }) {
                <span className="text-2xl">🔒</span>
              </div>
              <h2 className="text-xl font-bold text-slate-800 mb-2">Acesso Suspenso</h2>
-             <p className="text-slate-500 text-sm mb-6">A assinatura da sua empresa encontra-se vencida ou pendente. Por favor, entre em contato com o seu gerente para regularizar o acesso.</p>
+             <p className="text-slate-500 text-sm mb-6">A assinatura da sua empresa encontra-se vencida ou pendente. Por favor, entre em contato com o seu gerente ou através de <a href="mailto:contato@nexalecrm.com.br" className="text-indigo-600 font-bold hover:underline">contato@nexalecrm.com.br</a> para regularizar o acesso.</p>
              <button onClick={() => supabase.auth.signOut()} className="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold py-3 rounded-xl transition-colors text-sm">Sair da Conta</button>
           </div>
         </div>
@@ -1492,7 +1492,7 @@ export default function App({ session }) {
              <span className="text-2xl">💳</span>
            </div>
            <h2 className="text-2xl font-bold text-slate-800 mb-2">Assinatura Vencida</h2>
-           <p className="text-slate-500 text-sm mb-8">Seu período de acesso terminou. Para continuar utilizando a sua Máquina de Vendas e não perder seus leads, renove sua assinatura escolhendo um dos planos abaixo.</p>
+           <p className="text-slate-500 text-sm mb-8">Seu período de acesso terminou. Para continuar utilizando a sua Máquina de Vendas e não perder seus leads, renove sua assinatura escolhendo um dos planos abaixo. Se precisar de suporte técnico, entre em contato com <a href="mailto:contato@nexalecrm.com.br" className="text-indigo-600 font-bold hover:underline">contato@nexalecrm.com.br</a>.</p>
            
            <div className="grid md:grid-cols-3 gap-6 mb-8 text-left">
              <div className="border-2 border-slate-100 rounded-xl p-5 hover:border-slate-300 transition-colors bg-white">
@@ -3431,6 +3431,11 @@ export default function App({ session }) {
                 Enviar
               </button>
             </form>
+            <div className="bg-slate-50 border-t border-slate-100 px-3 py-1.5 text-center">
+              <p className="text-[9px] text-slate-400 font-bold tracking-wide">
+                Suporte por e-mail: <a href="mailto:contato@nexalecrm.com.br" className="text-indigo-600 hover:underline">contato@nexalecrm.com.br</a>
+              </p>
+            </div>
           </div>
         )}
       </div>
