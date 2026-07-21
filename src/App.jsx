@@ -17,6 +17,7 @@ const COLORS = ['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#14B8A6'
 
 import SuperAdminPanel from './SuperAdminPanel';
 import SuperAdminKanban from './SuperAdminKanban';
+import TutorialsPage from './TutorialsPage';
 
 const compressImage = (file, maxWidth = 1200, maxHeight = 1200, quality = 0.7) => {
   return new Promise((resolve) => {
@@ -1677,6 +1678,14 @@ export default function App({ session }) {
               >
                 🚀 Campanha
               </button>
+
+              <button 
+                onClick={() => setCurrentView('tutorials')}
+                className={`px-3 py-1.5 rounded-md text-sm font-bold transition-all ${currentView === 'tutorials' ? 'bg-indigo-600 text-white shadow-sm shadow-indigo-900/5' : 'text-slate-500 hover:text-slate-700'}`}
+              >
+                🎥 Tutoriais
+              </button>
+
             {userRole === 'superadmin' && (
               <button 
                 onClick={() => setCurrentView('superadmin')}
@@ -2920,6 +2929,10 @@ export default function App({ session }) {
 
           </div>
         </div>
+      )}
+
+      {currentView === 'tutorials' && (
+        <TutorialsPage />
       )}
 
       {showModal && (
