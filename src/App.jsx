@@ -1459,16 +1459,27 @@ export default function App({ session }) {
   ];
 
   const fetchCampaignQueue = async (targetCompId = companyId) => {
-    const activeId = (userRole === 'superadmin' && selectedConfigCompanyId) ? selectedConfigCompanyId : (companyId || 'fbd8e84b-d35e-4390-ae05-5e18ab3e888e');
-    if (!activeId) return;
+    let activeId = targetCompId;
+    if (userRole === 'superadmin') {
+      activeId = selectedConfigCompanyId || companyId || 'fbd8e84b-d35e-4390-ae05-5e18ab3e888e';
+    }
+
     try {
-      const { data, error } = await supabase
+      let query = supabase
         .from('campaigns')
         .select('*')
-        .eq('company_id', activeId)
         .in('status', ['pendente', 'enviando', 'concluido', 'cancelado'])
         .order('created_at', { ascending: false })
         .limit(20);
+
+      if (userRole === 'vendedor') {
+        // Vendedor vê APENAS as campanhas criadas por ele mesmo
+        query = query.eq('user_id', session?.user?.id);
+      } else if (activeId) {
+        query = query.eq('company_id', activeId);
+      }
+
+      const { data, error } = await query;
 
       if (!error && data) {
         setCampaignQueue(data);
@@ -2202,7 +2213,10 @@ export default function App({ session }) {
             if (!window.confirm(`Agendar disparo para ${allContacts.length} contatos no dia ${scheduleTime.toLocaleString('pt-BR')}?`)) return;
             
             try {
-              const targetCompanyId = (userRole === 'superadmin' && selectedConfigCompanyId) ? selectedConfigCompanyId : (companyId || 'fbd8e84b-d35e-4390-ae05-5e18ab3e888e');
+              let targetCompanyId = companyId;
+              if (userRole === 'superadmin') {
+                targetCompanyId = selectedConfigCompanyId || companyId || 'fbd8e84b-d35e-4390-ae05-5e18ab3e888e';
+              }
               const { error } = await supabase.from('campaigns').insert({
                 company_id: targetCompanyId,
                 user_id: session.user.id,
@@ -2233,7 +2247,10 @@ export default function App({ session }) {
 
           try {
             // Insere campanha imediata no banco (scheduled_for = agora)
-            const targetCompanyId = (userRole === 'superadmin' && selectedConfigCompanyId) ? selectedConfigCompanyId : (companyId || 'fbd8e84b-d35e-4390-ae05-5e18ab3e888e');
+            let targetCompanyId = companyId;
+            if (userRole === 'superadmin') {
+              targetCompanyId = selectedConfigCompanyId || companyId || 'fbd8e84b-d35e-4390-ae05-5e18ab3e888e';
+            }
             const { data, error } = await supabase.from('campaigns').insert({
               company_id: targetCompanyId,
               user_id: session.user.id,
