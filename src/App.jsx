@@ -2488,22 +2488,32 @@ export default function App({ session }) {
 
                 {/* 🔍 VALIDADOR DE NÚMEROS DO WHATSAPP */}
                 <div className="mt-4 border-t border-slate-100 pt-4">
-                  <div className="flex justify-between items-center mb-2 flex-wrap gap-2">
-                    <span className="text-xs font-black text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
-                      🔍 Filtro de WhatsApp Ativo
-                    </span>
-                    <button
-                      type="button"
-                      onClick={handleCheckWhatsAppNumbers}
-                      disabled={waCheckLoading}
-                      className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded-lg text-xs font-bold transition-all shadow-sm flex items-center gap-1.5 cursor-pointer"
-                    >
-                      {waCheckLoading ? '⏳ Filtrando...' : '🔍 Checar Números Ativos'}
-                    </button>
-                  </div>
-                  <p className="text-[11px] text-slate-400 font-medium">
-                    Verifique se os contatos selecionados possuem conta registrada no WhatsApp para proteger seu chip contra bloqueios.
-                  </p>
+                  {(() => {
+                    const activeCount = campTab === 'crm' ? campSelectedLeads.length : campTab === 'externa' ? externalContacts.length : (campSelectedLeads.length + externalContacts.length);
+                    return (
+                      <>
+                        <div className="flex justify-between items-center mb-2 flex-wrap gap-2">
+                          <span className="text-xs font-black text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+                            🔍 Filtro de WhatsApp Ativo
+                          </span>
+                          <button
+                            type="button"
+                            onClick={handleCheckWhatsAppNumbers}
+                            disabled={waCheckLoading || activeCount === 0}
+                            className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded-lg text-xs font-bold transition-all shadow-sm flex items-center gap-1.5 cursor-pointer"
+                          >
+                            {waCheckLoading ? '⏳ Filtrando...' : `🔍 Checar ${activeCount > 0 ? activeCount + ' ' : ''}Número(s) Ativo(s)`}
+                          </button>
+                        </div>
+                        <p className="text-[11px] text-slate-400 font-medium">
+                          {activeCount > 0 
+                            ? `Ele testará os ${activeCount} contato(s) selecionado(s) acima para verificar quem possui WhatsApp ativo.`
+                            : 'Marque os leads acima ou cole uma lista para checar se possuem WhatsApp.'
+                          }
+                        </p>
+                      </>
+                    );
+                  })()}
 
                   {waCheckResults && (
                     <div className="mt-3 p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-2.5 animate-in fade-in duration-200">
