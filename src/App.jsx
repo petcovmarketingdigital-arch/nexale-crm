@@ -1459,7 +1459,7 @@ export default function App({ session }) {
   ];
 
   const fetchCampaignQueue = async (targetCompId = companyId) => {
-    const activeId = userRole === 'superadmin' ? selectedConfigCompanyId : targetCompId;
+    const activeId = (userRole === 'superadmin' && selectedConfigCompanyId) ? selectedConfigCompanyId : (companyId || 'fbd8e84b-d35e-4390-ae05-5e18ab3e888e');
     if (!activeId) return;
     try {
       const { data, error } = await supabase
@@ -2202,8 +2202,9 @@ export default function App({ session }) {
             if (!window.confirm(`Agendar disparo para ${allContacts.length} contatos no dia ${scheduleTime.toLocaleString('pt-BR')}?`)) return;
             
             try {
+              const targetCompanyId = (userRole === 'superadmin' && selectedConfigCompanyId) ? selectedConfigCompanyId : (companyId || 'fbd8e84b-d35e-4390-ae05-5e18ab3e888e');
               const { error } = await supabase.from('campaigns').insert({
-                company_id: companyId,
+                company_id: targetCompanyId,
                 user_id: session.user.id,
                 status: 'pendente',
                 scheduled_for: scheduleTime.toISOString(),
@@ -2216,6 +2217,7 @@ export default function App({ session }) {
               setCampMsg('');
               setCampSelectedLeads([]);
               setCampAttachment(null);
+              fetchCampaignQueue(targetCompanyId);
             } catch (err) {
               console.error('Erro ao agendar:', err);
               alert(`Erro ao agendar campanha: ${err.message || 'Verifique o console'}`);
@@ -2231,8 +2233,9 @@ export default function App({ session }) {
 
           try {
             // Insere campanha imediata no banco (scheduled_for = agora)
+            const targetCompanyId = (userRole === 'superadmin' && selectedConfigCompanyId) ? selectedConfigCompanyId : (companyId || 'fbd8e84b-d35e-4390-ae05-5e18ab3e888e');
             const { data, error } = await supabase.from('campaigns').insert({
-              company_id: companyId,
+              company_id: targetCompanyId,
               user_id: session.user.id,
               status: 'pendente',
               scheduled_for: new Date().toISOString(),
