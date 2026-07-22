@@ -428,6 +428,7 @@ export default function App({ session }) {
   const [campMode, setCampMode] = useState('agora'); // 'agora' | 'agendar'
   const [campDate, setCampDate] = useState('');
   const [campAttachment, setCampAttachment] = useState(null); // { name, size, mimetype, base64, type }
+  const [campaignQueue, setCampaignQueue] = useState([]);
 
   const [isRecording, setIsRecording] = useState(false);
   const [recordingSeconds, setRecordingSeconds] = useState(0);
@@ -1457,6 +1458,49 @@ export default function App({ session }) {
     { name: 'Fechado (Ganho)', value: totalFaturamentoRealizado }
   ];
 
+  const fetchCampaignQueue = async (targetCompId = companyId) => {
+    const activeId = userRole === 'superadmin' ? selectedConfigCompanyId : targetCompId;
+    if (!activeId) return;
+    try {
+      const { data, error } = await supabase
+        .from('campaigns')
+        .select('*')
+        .eq('company_id', activeId)
+        .in('status', ['pendente', 'enviando', 'concluido', 'cancelado'])
+        .order('created_at', { ascending: false })
+        .limit(20);
+
+      if (!error && data) {
+        setCampaignQueue(data);
+      }
+    } catch (err) {
+      console.error('Erro ao buscar fila de campanhas:', err);
+    }
+  };
+
+  const handleCancelCampaign = async (campaignId) => {
+    if (!confirm('Deseja realmente cancelar/remover esta campanha da fila?')) return;
+    try {
+      const { error } = await supabase
+        .from('campaigns')
+        .update({ status: 'cancelado' })
+        .eq('id', campaignId);
+      if (error) throw error;
+      alert('Campanha cancelada com sucesso!');
+      fetchCampaignQueue();
+    } catch (err) {
+      alert('Erro ao cancelar campanha: ' + err.message);
+    }
+  };
+
+  useEffect(() => {
+    if (currentView === 'campanha') {
+      fetchCampaignQueue();
+      const interval = setInterval(fetchCampaignQueue, 5000);
+      return () => clearInterval(interval);
+    }
+  }, [currentView, selectedConfigCompanyId, companyId, userRole]);
+
   // Lógica de Vencimento Universal (Teste ou Assinatura)
   const expirationDate = trialEndsAt ? new Date(trialEndsAt) : null;
   const now = new Date();
@@ -2199,6 +2243,7 @@ export default function App({ session }) {
 
             if (error) throw error;
             const campaignId = data.id;
+            fetchCampaignQueue();
 
             // Escuta atualizações de progresso no banco via polling a cada 3 segundos
             const interval = setInterval(async () => {
@@ -2512,6 +2557,114 @@ export default function App({ session }) {
                 )}
               </div>
             )}
+
+            {/* 📅 FILA DE ENVIOS E CAMPANHAS AGENDADAS */}
+            <div className="bg-white rounded-2xl shadow-sm shadow-indigo-900/5 border border-slate-100 p-6 mt-6">
+              <div className="flex justify-between items-center mb-6 flex-wrap gap-2">
+                <div>
+                  <h3 className="text-base font-black text-slate-800 flex items-center gap-2">
+                    📅 Fila de Envios &amp; Campanhas Agendadas
+                  </h3>
+                  <p className="text-xs text-slate-500 mt-0.5 font-medium">
+                    Acompanhe os disparos programados, o andamento das entregas e gerencie suas campanhas.
+                  </p>
+                </div>
+                <button
+                  onClick={() => fetchCampaignQueue()}
+                  className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-lg text-xs font-bold transition-colors flex items-center gap-1 cursor-pointer"
+                  title="Atualizar fila"
+                >
+                  🔄 Atualizar Fila
+                </button>
+              </div>
+
+              {campaignQueue.length === 0 ? (
+                <div className="p-8 text-center bg-slate-50 rounded-xl border border-dashed border-slate-200">
+                  <span className="text-3xl block mb-2">📭</span>
+                  <p className="text-sm font-bold text-slate-600">Nenhuma campanha na fila ou agendada</p>
+                  <p className="text-xs text-slate-400 mt-1">Crie uma nova campanha acima para iniciar ou agendar disparos.</p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {campaignQueue.map((camp) => {
+                    let parsedText = '';
+                    try {
+                      const trimmed = (camp.message || '').trim();
+                      if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
+                        parsedText = JSON.parse(trimmed).text || camp.message;
+                      } else {
+                        parsedText = camp.message;
+                      }
+                    } catch (e) {
+                      parsedText = camp.message;
+                    }
+
+                    const isScheduledFuture = camp.scheduled_for && new Date(camp.scheduled_for) > new Date();
+                    const formattedDate = camp.scheduled_for ? new Date(camp.scheduled_for).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }) : 'Imediato';
+                    const contactsCount = camp.contacts ? camp.contacts.length : 0;
+                    
+                    let statusBadge = (
+                      <span className="px-2.5 py-1 bg-amber-100 text-amber-800 text-[10px] font-black rounded-lg uppercase tracking-wider flex items-center gap-1">
+                        ⏳ Agendado
+                      </span>
+                    );
+                    if (camp.status.startsWith('enviando')) {
+                      statusBadge = (
+                        <span className="px-2.5 py-1 bg-orange-500 text-white text-[10px] font-black rounded-lg uppercase tracking-wider animate-pulse flex items-center gap-1">
+                          🚀 Disparando...
+                        </span>
+                      );
+                    } else if (camp.status === 'concluido') {
+                      statusBadge = (
+                        <span className="px-2.5 py-1 bg-emerald-100 text-emerald-800 text-[10px] font-black rounded-lg uppercase tracking-wider flex items-center gap-1">
+                          ✅ Concluído
+                        </span>
+                      );
+                    } else if (camp.status === 'cancelado') {
+                      statusBadge = (
+                        <span className="px-2.5 py-1 bg-slate-100 text-slate-600 text-[10px] font-black rounded-lg uppercase tracking-wider flex items-center gap-1">
+                          🚫 Cancelado
+                        </span>
+                      );
+                    }
+
+                    return (
+                      <div key={camp.id} className="p-4 border border-slate-150 rounded-xl bg-slate-50/50 hover:bg-white hover:shadow-md hover:border-slate-200 transition-all flex flex-col sm:flex-row justify-between sm:items-center gap-4">
+                        <div className="space-y-1.5 flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            {statusBadge}
+                            <span className="text-xs font-bold text-slate-700 bg-white border border-slate-200 px-2 py-0.5 rounded-md">
+                              👥 {contactsCount} destinatário{contactsCount > 1 ? 's' : ''}
+                            </span>
+                            <span className="text-xs font-bold text-slate-500 bg-white border border-slate-200 px-2 py-0.5 rounded-md">
+                              ⏱️ {camp.delay || 20}s entre msgs
+                            </span>
+                          </div>
+
+                          <p className="text-sm font-bold text-slate-800 truncate" title={parsedText}>
+                            "{parsedText}"
+                          </p>
+
+                          <div className="flex items-center gap-3 text-[11px] text-slate-500 font-medium flex-wrap">
+                            <span>📅 Disparo: <strong>{isScheduledFuture ? `Agendado para ${formattedDate}` : (camp.status === 'concluido' ? `Finalizado (${formattedDate})` : `Programado (${formattedDate})`)}</strong></span>
+                          </div>
+                        </div>
+
+                        {(camp.status === 'pendente' || camp.status.startsWith('enviando')) && (
+                          <button
+                            onClick={() => handleCancelCampaign(camp.id)}
+                            className="px-3 py-2 bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 rounded-xl text-xs font-bold transition-colors flex items-center justify-center gap-1.5 flex-shrink-0 cursor-pointer"
+                            title="Cancelar/Excluir agendamento"
+                          >
+                            🗑️ Cancelar
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
           </div>
         );
       })()}
