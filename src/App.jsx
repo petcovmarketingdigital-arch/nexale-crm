@@ -1556,21 +1556,43 @@ export default function App({ session }) {
 
     try {
       const targetInstance = (userRole === 'superadmin' && !selectedConfigCompanyId) ? 'superadmin' : (userRole === 'superadmin' ? (selectedConfigCompanyId || 'superadmin') : companyId);
-      const res = await fetch(`/evolution/chat/whatsappNumbers/${targetInstance}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'apikey': '123' },
-        body: JSON.stringify({ numbers: numbersToCheck.map(n => {
-          let clean = String(n).replace(/\D/g, '');
-          if (clean.length === 10 || clean.length === 11) clean = '55' + clean;
-          return clean;
-        }) })
-      });
-
-      if (!res.ok) {
-        throw new Error(`Servidor de WhatsApp indisponível (HTTP ${res.status}). Verifique se o seu WhatsApp está conectado.`);
+      
+      let data = null;
+      // 1. Tenta proxy local /evolution
+      try {
+        const res = await fetch(`/evolution/chat/whatsappNumbers/${targetInstance}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'apikey': '123' },
+          body: JSON.stringify({ numbers: numbersToCheck.map(n => {
+            let clean = String(n).replace(/\D/g, '');
+            if (clean.length === 10 || clean.length === 11) clean = '55' + clean;
+            return clean;
+          }) })
+        });
+        if (res.ok) {
+          data = await res.json();
+        }
+      } catch (proxyErr) {
+        console.warn('Proxy /evolution falhou, usando fallback backend...', proxyErr);
       }
 
-      const data = await res.json();
+      // 2. Fallback direto no backend (porta 3001)
+      if (!data) {
+        const directRes = await fetch(`http://187.77.243.166:3001/api/check-whatsapp`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            companyId: targetInstance,
+            numbers: numbersToCheck
+          })
+        });
+        if (!directRes.ok) {
+          throw new Error(`Servidor de WhatsApp indisponível. Verifique se o seu WhatsApp está conectado no menu WhatsApp.`);
+        }
+        const directData = await directRes.json();
+        data = directData.results || directData;
+      }
+
       const valid = [];
       const invalid = [];
 
@@ -1599,14 +1621,23 @@ export default function App({ session }) {
       return;
     }
 
-    const validPhoneSet = new Set(waCheckResults.valid.map(v => (v.number || '').replace(/\D/g, '')));
+    const validPhoneSet = new Set();
+    waCheckResults.valid.forEach(v => {
+      const raw = (v.number || v.jid || '').replace(/\D/g, '');
+      if (raw) {
+        validPhoneSet.add(raw);
+        if (raw.startsWith('55')) validPhoneSet.add(raw.slice(2));
+      }
+    });
+
     const filteredLeadsList = getCampFilteredLeadsList();
 
     if (campTab === 'crm' || campTab === 'ambos') {
       const validLeadIds = filteredLeadsList.filter(l => {
         let clean = (l.telefone || '').replace(/\D/g, '');
         if (clean.length === 10 || clean.length === 11) clean = '55' + clean;
-        return validPhoneSet.has(clean) || validPhoneSet.has(clean.replace(/^55/, ''));
+        const without55 = clean.startsWith('55') ? clean.slice(2) : clean;
+        return validPhoneSet.has(clean) || validPhoneSet.has(without55);
       }).map(l => l.id);
 
       setCampSelectedLeads(validLeadIds);
@@ -1615,7 +1646,8 @@ export default function App({ session }) {
       const validLines = campExternalList.split('\n').filter(line => {
         let num = line.trim().split('|')[0].replace(/\D/g, '');
         if (num.length === 10 || num.length === 11) num = '55' + num;
-        return validPhoneSet.has(num) || validPhoneSet.has(num.replace(/^55/, ''));
+        const without55 = num.startsWith('55') ? num.slice(2) : num;
+        return validPhoneSet.has(num) || validPhoneSet.has(without55);
       }).join('\n');
 
       setCampExternalList(validLines);
