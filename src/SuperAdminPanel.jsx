@@ -7,13 +7,23 @@ export default function SuperAdminPanel() {
   const [loading, setLoading] = useState(true);
   const [editDates, setEditDates] = useState({});
 
-  // States para os Tutoriais
+  // States para os Tutoriais com persistência de Rascunho (localStorage)
   const [tutorials, setTutorials] = useState([]);
-  const [newTitle, setNewTitle] = useState('');
-  const [newDescription, setNewDescription] = useState('');
-  const [newVideoUrl, setNewVideoUrl] = useState('');
-  const [newCategory, setNewCategory] = useState('WhatsApp');
-  const [newOrder, setNewOrder] = useState(0);
+  const [editingTutorialId, setEditingTutorialId] = useState(null);
+  const [newTitle, setNewTitle] = useState(() => localStorage.getItem('draft_tutorial_title') || '');
+  const [newDescription, setNewDescription] = useState(() => localStorage.getItem('draft_tutorial_desc') || '');
+  const [newVideoUrl, setNewVideoUrl] = useState(() => localStorage.getItem('draft_tutorial_url') || '');
+  const [newCategory, setNewCategory] = useState(() => localStorage.getItem('draft_tutorial_cat') || 'WhatsApp');
+  const [newOrder, setNewOrder] = useState(() => localStorage.getItem('draft_tutorial_order') || 0);
+
+  // Salva automaticamente o rascunho conforme o usuário digita
+  useEffect(() => {
+    localStorage.setItem('draft_tutorial_title', newTitle);
+    localStorage.setItem('draft_tutorial_desc', newDescription);
+    localStorage.setItem('draft_tutorial_url', newVideoUrl);
+    localStorage.setItem('draft_tutorial_cat', newCategory);
+    localStorage.setItem('draft_tutorial_order', newOrder);
+  }, [newTitle, newDescription, newVideoUrl, newCategory, newOrder]);
 
   useEffect(() => {
     if (activeSubTab === 'subscribers') {
@@ -56,41 +66,30 @@ export default function SuperAdminPanel() {
     setLoading(false);
   };
 
-  const handleUpdateStatus = async (id, newStatus) => {
-    if (!window.confirm(`Deseja alterar o status para ${newStatus}?`)) return;
-    const { error } = await supabase.from('companies').update({ subscription_status: newStatus }).eq('id', id);
-    if (error) alert(error.message);
-    else fetchCompanies();
+  const handleStartEdit = (t) => {
+    setEditingTutorialId(t.id);
+    setNewTitle(t.title || '');
+    setNewDescription(t.description || '');
+    setNewVideoUrl(t.video_url || '');
+    setNewCategory(t.category || 'WhatsApp');
+    setNewOrder(t.display_order || 0);
   };
 
-  const handleSetTrialEnd = async (id) => {
-    const newDateStr = editDates[id];
-    if (!newDateStr) return;
-    if (!window.confirm(`Deseja definir o prazo para ${new Date(newDateStr + 'T12:00:00Z').toLocaleDateString('pt-BR')}?`)) return;
-    const { error } = await supabase.from('companies').update({ trial_ends_at: newDateStr + 'T23:59:59Z' }).eq('id', id);
-    if (error) {
-      alert(error.message);
-    } else {
-      setEditDates(prev => {
-        const next = { ...prev };
-        delete next[id];
-        return next;
-      });
-      fetchCompanies();
-    }
+  const handleCancelEdit = () => {
+    setEditingTutorialId(null);
+    localStorage.removeItem('draft_tutorial_title');
+    localStorage.removeItem('draft_tutorial_desc');
+    localStorage.removeItem('draft_tutorial_url');
+    localStorage.removeItem('draft_tutorial_cat');
+    localStorage.removeItem('draft_tutorial_order');
+    setNewTitle('');
+    setNewDescription('');
+    setNewVideoUrl('');
+    setNewCategory('WhatsApp');
+    setNewOrder(0);
   };
 
-  const handleDeleteCompany = async (id, name) => {
-    if (!window.confirm(`ATENÇÃO: Deseja realmente excluir a empresa "${name}"? Essa ação apagará a empresa e todos os dados vinculados a ela.`)) return;
-    const { error } = await supabase.rpc('delete_company_cascade', { target_company_id: id });
-    if (error) {
-      alert('Erro ao excluir empresa no banco de dados: ' + error.message);
-    } else {
-      fetchCompanies();
-    }
-  };
-
-  // CRUD de Tutoriais
+  // CRUD de Tutoriais (Inserir ou Atualizar)
   const handleAddTutorial = async (e) => {
     e.preventDefault();
     if (!newTitle || !newVideoUrl) {
@@ -98,22 +97,34 @@ export default function SuperAdminPanel() {
       return;
     }
 
-    const { error } = await supabase.from('tutorials').insert({
-      title: newTitle,
-      description: newDescription,
-      video_url: newVideoUrl,
-      category: newCategory,
-      display_order: parseInt(newOrder) || 0
-    });
+    let error = null;
+
+    if (editingTutorialId) {
+      // Atualiza o tutorial existente
+      const res = await supabase.from('tutorials').update({
+        title: newTitle,
+        description: newDescription,
+        video_url: newVideoUrl,
+        category: newCategory,
+        display_order: parseInt(newOrder) || 0
+      }).eq('id', editingTutorialId);
+      error = res.error;
+    } else {
+      // Insere um novo tutorial
+      const res = await supabase.from('tutorials').insert({
+        title: newTitle,
+        description: newDescription,
+        video_url: newVideoUrl,
+        category: newCategory,
+        display_order: parseInt(newOrder) || 0
+      });
+      error = res.error;
+    }
 
     if (error) {
       alert('Erro ao salvar tutorial: ' + error.message);
     } else {
-      setNewTitle('');
-      setNewDescription('');
-      setNewVideoUrl('');
-      setNewCategory('WhatsApp');
-      setNewOrder(0);
+      handleCancelEdit();
       fetchTutorials();
     }
   };
@@ -256,9 +267,22 @@ export default function SuperAdminPanel() {
 
         {!loading && activeSubTab === 'tutorials' && (
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 animate-fade-in">
-            {/* Form de Adicionar */}
+            {/* Form de Adicionar / Editar */}
             <div className="bg-white p-6 rounded-2xl shadow-xl shadow-slate-200/50 border border-slate-100 lg:col-span-1">
-              <h3 className="text-lg font-black text-slate-900 mb-4">📺 Novo Vídeo</h3>
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="text-lg font-black text-slate-900">
+                  {editingTutorialId ? '✏️ Editar Vídeo' : '📺 Novo Vídeo'}
+                </h3>
+                {editingTutorialId && (
+                  <button
+                    type="button"
+                    onClick={handleCancelEdit}
+                    className="text-xs font-bold text-slate-400 hover:text-red-500 transition-colors"
+                  >
+                    Cancelar
+                  </button>
+                )}
+              </div>
               <form onSubmit={handleAddTutorial} className="flex flex-col gap-4">
                 <div>
                   <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Título do Vídeo</label>
@@ -303,6 +327,7 @@ export default function SuperAdminPanel() {
                       <option value="WhatsApp">WhatsApp</option>
                       <option value="Inteligência Artificial">IA (Sofia)</option>
                       <option value="Prospecção B2B">Prospecção B2B</option>
+                      <option value="Captação B2C / PF">Captação B2C / PF</option>
                     </select>
                   </div>
                   <div>
@@ -319,7 +344,7 @@ export default function SuperAdminPanel() {
                   type="submit"
                   className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-sm rounded-xl transition-all shadow-md shadow-indigo-100"
                 >
-                  🚀 Salvar Tutorial
+                  {editingTutorialId ? '💾 Salvar Alterações' : '🚀 Salvar Tutorial'}
                 </button>
               </form>
             </div>
@@ -329,7 +354,7 @@ export default function SuperAdminPanel() {
               <h3 className="text-lg font-black text-slate-900 mb-4">📺 Vídeos Disponíveis ({tutorials.length})</h3>
               <div className="flex flex-col gap-4 overflow-y-auto max-h-[500px]">
                 {tutorials.map(t => (
-                  <div key={t.id} className="flex items-center justify-between p-4 border border-slate-200/60 rounded-xl hover:border-slate-300 transition-all gap-4">
+                  <div key={t.id} className={`flex items-center justify-between p-4 border rounded-xl transition-all gap-4 ${editingTutorialId === t.id ? 'border-indigo-500 bg-indigo-50/20' : 'border-slate-200/60 hover:border-slate-300'}`}>
                     <div className="flex flex-col">
                       <div className="flex items-center gap-2">
                         <span className="text-sm font-black text-slate-800">{t.title}</span>
@@ -339,13 +364,26 @@ export default function SuperAdminPanel() {
                       </div>
                       <span className="text-xs text-slate-400 mt-1 truncate max-w-sm md:max-w-md">{t.video_url}</span>
                     </div>
-                    <button
-                      onClick={() => handleDeleteTutorial(t.id, t.title)}
-                      className="p-2 text-slate-300 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all"
-                      title="Excluir Tutorial"
-                    >
-                      <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
-                    </button>
+                    <div className="flex items-center gap-1">
+                      <button
+                        type="button"
+                        onClick={() => handleStartEdit(t)}
+                        className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all"
+                        title="Editar Tutorial"
+                      >
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                        </svg>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteTutorial(t.id, t.title)}
+                        className="p-2 text-slate-300 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all"
+                        title="Excluir Tutorial"
+                      >
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                      </button>
+                    </div>
                   </div>
                 ))}
                 {tutorials.length === 0 && (
