@@ -2492,9 +2492,23 @@ export default function App({ session }) {
                   ))}
                 </div>
                 {!campRunning && campProgress.sent === campProgress.total && (
-                  <div className="mt-4 p-3 bg-green-50 border border-green-200 rounded-xl text-center">
-                    <p className="text-green-700 font-black">🎉 Campanha finalizada! {campProgress.log.filter(l => l.status.includes('✅')).length} mensagens enviadas com sucesso.</p>
-                  </div>
+                  (() => {
+                    const successCount = campProgress.log.filter(l => l.status.includes('✅')).length;
+                    if (successCount > 0) {
+                      return (
+                        <div className="mt-4 p-3 bg-green-50 border border-green-200 rounded-xl text-center">
+                          <p className="text-green-700 font-black">🎉 Campanha finalizada! {successCount} mensagem(ns) enviada(s) com sucesso.</p>
+                        </div>
+                      );
+                    } else {
+                      return (
+                        <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-xl text-center">
+                          <p className="text-red-700 font-black">⚠️ Campanha finalizada, mas nenhuma mensagem foi entregue.</p>
+                          <p className="text-red-600 text-xs font-bold mt-1">Verifique se a sua conexão de WhatsApp está ativa no menu "💬 WhatsApp".</p>
+                        </div>
+                      );
+                    }
+                  })()
                 )}
               </div>
             )}

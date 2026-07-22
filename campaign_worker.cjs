@@ -88,6 +88,14 @@ const simulateTyping = async (companyId, phoneNumber, durationMs) => {
   }
 };
 
+// Helper para resolver o nome da instância da Evolution API (trata alias do superadmin/Nexale)
+const getTargetInstance = (companyId) => {
+  if (companyId === 'fbd8e84b-d35e-4390-ae05-5e18ab3e888e' || companyId === 'superadmin' || !companyId) {
+    return 'superadmin';
+  }
+  return companyId;
+};
+
 // Evolution API Helper — com simulação de digitação integrada
 const sendWahaMessage = async (companyId, phoneNumber, text) => {
   let clean = phoneNumber.replace(/\D/g, '');
@@ -95,11 +103,13 @@ const sendWahaMessage = async (companyId, phoneNumber, text) => {
     clean = '55' + clean;
   }
 
+  const targetInstance = getTargetInstance(companyId);
+
   // Simula digitação por 2 a 5 segundos antes de enviar (imita humano)
   const typingDuration = Math.floor(Math.random() * 3000) + 2000;
-  await simulateTyping(companyId, clean, typingDuration);
+  await simulateTyping(targetInstance, clean, typingDuration);
 
-  const sendRes = await fetch(`http://localhost:8080/message/sendText/${companyId}`, {
+  const sendRes = await fetch(`http://localhost:8080/message/sendText/${targetInstance}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'apikey': '123' },
     body: JSON.stringify({ number: clean, text })
@@ -116,11 +126,13 @@ const sendWahaMedia = async (companyId, phoneNumber, mediaType, mimeType, base64
   }
   const rawBase64 = base64Media.includes('base64,') ? base64Media.split('base64,')[1] : base64Media;
   
+  const targetInstance = getTargetInstance(companyId);
+
   // Simula digitação por 2 a 5 segundos antes de enviar (imita humano)
   const typingDuration = Math.floor(Math.random() * 3000) + 2000;
-  await simulateTyping(companyId, clean, typingDuration);
+  await simulateTyping(targetInstance, clean, typingDuration);
 
-  const res = await fetch(`http://localhost:8080/message/sendMedia/${companyId}`, {
+  const res = await fetch(`http://localhost:8080/message/sendMedia/${targetInstance}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'apikey': '123' },
     body: JSON.stringify({
