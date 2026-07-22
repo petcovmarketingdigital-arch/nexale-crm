@@ -1506,13 +1506,27 @@ export default function App({ session }) {
     }
   };
 
-  const handleCheckWhatsAppNumbers = async () => {
-    let numbersToCheck = [];
-    const filteredLeadsList = columns.flatMap(col => col.cards.map(c => ({ ...c, coluna: col.id }))).filter(l => {
+  const getCampFilteredLeadsList = () => {
+    const saLeads = (superAdminLeads || []).map(c => ({
+      id: c.id,
+      contato: c.nome,
+      empresa: c.empresa,
+      telefone: c.telefone,
+      temperatura: c.sa_temperatura || 'Frio',
+      coluna: c.sa_stage || 'leads',
+      valor: c.sa_valor || 0
+    }));
+    const allLeads = userRole === 'superadmin' ? saLeads : columns.flatMap(col => col.cards.map(c => ({ ...c, coluna: col.id })));
+    return allLeads.filter(l => {
       if (campFilter.coluna !== 'all' && l.coluna !== campFilter.coluna) return false;
       if (campFilter.temperatura !== 'all' && l.temperatura !== campFilter.temperatura) return false;
       return l.telefone && l.telefone !== 'Não informado';
     });
+  };
+
+  const handleCheckWhatsAppNumbers = async () => {
+    let numbersToCheck = [];
+    const filteredLeadsList = getCampFilteredLeadsList();
 
     const externalContactsList = campExternalList
       .split(/[\n,;]/)
@@ -1541,11 +1555,15 @@ export default function App({ session }) {
     setWaCheckResults(null);
 
     try {
-      const targetInstance = userRole === 'superadmin' ? 'superadmin' : companyId;
+      const targetInstance = (userRole === 'superadmin' && !selectedConfigCompanyId) ? 'superadmin' : (userRole === 'superadmin' ? (selectedConfigCompanyId || 'superadmin') : companyId);
       const res = await fetch(`/evolution/chat/whatsappNumbers/${targetInstance}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'apikey': '123' },
-        body: JSON.stringify({ numbers: numbersToCheck.map(n => n.replace(/\D/g, '').length <= 11 ? '55' + n.replace(/\D/g, '') : n.replace(/\D/g, '')) })
+        body: JSON.stringify({ numbers: numbersToCheck.map(n => {
+          let clean = String(n).replace(/\D/g, '');
+          if (clean.length === 10 || clean.length === 11) clean = '55' + clean;
+          return clean;
+        }) })
       });
 
       if (!res.ok) {
@@ -1582,27 +1600,28 @@ export default function App({ session }) {
     }
 
     const validPhoneSet = new Set(waCheckResults.valid.map(v => (v.number || '').replace(/\D/g, '')));
-    const filteredLeadsList = columns.flatMap(col => col.cards.map(c => ({ ...c, coluna: col.id }))).filter(l => l.telefone);
+    const filteredLeadsList = getCampFilteredLeadsList();
 
-    if (campTab === 'crm') {
+    if (campTab === 'crm' || campTab === 'ambos') {
       const validLeadIds = filteredLeadsList.filter(l => {
-        let clean = l.telefone.replace(/\D/g, '');
+        let clean = (l.telefone || '').replace(/\D/g, '');
         if (clean.length === 10 || clean.length === 11) clean = '55' + clean;
-        return validPhoneSet.has(clean) || validPhoneSet.has(clean.replace('55', ''));
+        return validPhoneSet.has(clean) || validPhoneSet.has(clean.replace(/^55/, ''));
       }).map(l => l.id);
 
       setCampSelectedLeads(validLeadIds);
-    } else if (campTab === 'externa') {
+    } 
+    if (campTab === 'externa' || campTab === 'ambos') {
       const validLines = campExternalList.split('\n').filter(line => {
         let num = line.trim().split('|')[0].replace(/\D/g, '');
         if (num.length === 10 || num.length === 11) num = '55' + num;
-        return validPhoneSet.has(num) || validPhoneSet.has(num.replace('55', ''));
+        return validPhoneSet.has(num) || validPhoneSet.has(num.replace(/^55/, ''));
       }).join('\n');
 
       setCampExternalList(validLines);
     }
 
-    alert(`Perfeito! Apenas os ${waCheckResults.valid.length} números com WhatsApp ativo foram mantidos para a sua campanha!`);
+    alert(`Perfeito! Apenas os ${waCheckResults.valid.length} números com WhatsApp ativo foram mantidos para o disparo!`);
   };
 
   useEffect(() => {
