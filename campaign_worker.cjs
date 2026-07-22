@@ -27,10 +27,48 @@ const express = require('express');
 const cors = require('cors');
 const app = express();
 app.use(cors({ origin: '*' }));
-app.use(express.json());
+app.use(express.json({ limit: '10mb' }));
 
 // Servir arquivos públicos (guia anti-ban, etc.)
 app.use('/public', express.static(path.join(__dirname, 'public')));
+
+// Endpoint de Validação de Números de WhatsApp em Lote
+app.post('/api/check-whatsapp', async (req, res) => {
+  try {
+    const { companyId, numbers } = req.body;
+    if (!numbers || !Array.isArray(numbers) || numbers.length === 0) {
+      return res.status(400).json({ error: 'Nenhum número fornecido.' });
+    }
+
+    const targetInstance = getTargetInstance(companyId);
+
+    // Formata números para o padrão 55...
+    const formattedNumbers = numbers.map(n => {
+      let clean = String(n).replace(/\D/g, '');
+      if (clean.length === 10 || clean.length === 11) clean = '55' + clean;
+      return clean;
+    });
+
+    console.log(`🔍 [Validador WA] Checando ${formattedNumbers.length} números para a instância "${targetInstance}"...`);
+
+    const evoRes = await fetch(`http://localhost:8080/chat/whatsappNumbers/${targetInstance}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'apikey': '123' },
+      body: JSON.stringify({ numbers: formattedNumbers })
+    });
+
+    if (!evoRes.ok) {
+      const errText = await evoRes.text();
+      return res.status(500).json({ error: `Evolution API returned ${evoRes.status}: ${errText}` });
+    }
+
+    const evoData = await evoRes.json();
+    return res.json({ success: true, results: evoData });
+  } catch (err) {
+    console.error('❌ Erro na rota /api/check-whatsapp:', err.message);
+    return res.status(500).json({ error: err.message });
+  }
+});
 
 
 // Supabase Connection

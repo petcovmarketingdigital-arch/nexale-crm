@@ -429,6 +429,8 @@ export default function App({ session }) {
   const [campDate, setCampDate] = useState('');
   const [campAttachment, setCampAttachment] = useState(null); // { name, size, mimetype, base64, type }
   const [campaignQueue, setCampaignQueue] = useState([]);
+  const [waCheckLoading, setWaCheckLoading] = useState(false);
+  const [waCheckResults, setWaCheckResults] = useState(null); // { valid: [], invalid: [] }
 
   const [isRecording, setIsRecording] = useState(false);
   const [recordingSeconds, setRecordingSeconds] = useState(0);
@@ -1504,6 +1506,105 @@ export default function App({ session }) {
     }
   };
 
+  const handleCheckWhatsAppNumbers = async () => {
+    let numbersToCheck = [];
+    const filteredLeadsList = columns.flatMap(col => col.cards.map(c => ({ ...c, coluna: col.id }))).filter(l => {
+      if (campFilter.coluna !== 'all' && l.coluna !== campFilter.coluna) return false;
+      if (campFilter.temperatura !== 'all' && l.temperatura !== campFilter.temperatura) return false;
+      return l.telefone && l.telefone !== 'Não informado';
+    });
+
+    const externalContactsList = campExternalList
+      .split(/[\n,;]/)
+      .map(line => {
+        const parts = line.trim().split('|');
+        return { nome: parts[1]?.trim() || 'Cliente', telefone: parts[0]?.trim().replace(/\D/g, '') };
+      })
+      .filter(c => c.telefone.length >= 10);
+
+    if (campTab === 'crm') {
+      numbersToCheck = filteredLeadsList.filter(l => campSelectedLeads.includes(l.id)).map(l => l.telefone);
+    } else if (campTab === 'externa') {
+      numbersToCheck = externalContactsList.map(c => c.telefone);
+    } else {
+      const crmNums = filteredLeadsList.filter(l => campSelectedLeads.includes(l.id)).map(l => l.telefone);
+      const extNums = externalContactsList.map(c => c.telefone);
+      numbersToCheck = [...crmNums, ...extNums];
+    }
+
+    if (!numbersToCheck || numbersToCheck.length === 0) {
+      alert('Selecione ou informe os contatos primeiro para poder filtrar os números ativos.');
+      return;
+    }
+
+    setWaCheckLoading(true);
+    setWaCheckResults(null);
+
+    try {
+      const targetInstance = userRole === 'superadmin' ? 'superadmin' : companyId;
+      const res = await fetch(`/evolution/chat/whatsappNumbers/${targetInstance}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'apikey': '123' },
+        body: JSON.stringify({ numbers: numbersToCheck.map(n => n.replace(/\D/g, '').length <= 11 ? '55' + n.replace(/\D/g, '') : n.replace(/\D/g, '')) })
+      });
+
+      if (!res.ok) {
+        throw new Error(`Servidor de WhatsApp indisponível (HTTP ${res.status}). Verifique se o seu WhatsApp está conectado.`);
+      }
+
+      const data = await res.json();
+      const valid = [];
+      const invalid = [];
+
+      if (Array.isArray(data)) {
+        data.forEach(item => {
+          if (item.exists) {
+            valid.push(item);
+          } else {
+            invalid.push(item);
+          }
+        });
+      }
+
+      setWaCheckResults({ valid, invalid });
+    } catch (err) {
+      console.error('Erro na verificação de números:', err);
+      alert(`Falha ao checar números no WhatsApp: ${err.message}`);
+    } finally {
+      setWaCheckLoading(false);
+    }
+  };
+
+  const handleApplyOnlyValidNumbers = () => {
+    if (!waCheckResults || !waCheckResults.valid || waCheckResults.valid.length === 0) {
+      alert('Nenhum número válido encontrado para aplicar.');
+      return;
+    }
+
+    const validPhoneSet = new Set(waCheckResults.valid.map(v => (v.number || '').replace(/\D/g, '')));
+    const filteredLeadsList = columns.flatMap(col => col.cards.map(c => ({ ...c, coluna: col.id }))).filter(l => l.telefone);
+
+    if (campTab === 'crm') {
+      const validLeadIds = filteredLeadsList.filter(l => {
+        let clean = l.telefone.replace(/\D/g, '');
+        if (clean.length === 10 || clean.length === 11) clean = '55' + clean;
+        return validPhoneSet.has(clean) || validPhoneSet.has(clean.replace('55', ''));
+      }).map(l => l.id);
+
+      setCampSelectedLeads(validLeadIds);
+    } else if (campTab === 'externa') {
+      const validLines = campExternalList.split('\n').filter(line => {
+        let num = line.trim().split('|')[0].replace(/\D/g, '');
+        if (num.length === 10 || num.length === 11) num = '55' + num;
+        return validPhoneSet.has(num) || validPhoneSet.has(num.replace('55', ''));
+      }).join('\n');
+
+      setCampExternalList(validLines);
+    }
+
+    alert(`Perfeito! Apenas os ${waCheckResults.valid.length} números com WhatsApp ativo foram mantidos para a sua campanha!`);
+  };
+
   useEffect(() => {
     if (currentView === 'campanha') {
       fetchCampaignQueue();
@@ -2384,6 +2485,49 @@ export default function App({ session }) {
                     <p className="text-xs text-orange-600 font-semibold mt-1">{externalContacts.length} contatos externos válidos detectados</p>
                   </div>
                 )}
+
+                {/* 🔍 VALIDADOR DE NÚMEROS DO WHATSAPP */}
+                <div className="mt-4 border-t border-slate-100 pt-4">
+                  <div className="flex justify-between items-center mb-2 flex-wrap gap-2">
+                    <span className="text-xs font-black text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+                      🔍 Filtro de WhatsApp Ativo
+                    </span>
+                    <button
+                      type="button"
+                      onClick={handleCheckWhatsAppNumbers}
+                      disabled={waCheckLoading}
+                      className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded-lg text-xs font-bold transition-all shadow-sm flex items-center gap-1.5 cursor-pointer"
+                    >
+                      {waCheckLoading ? '⏳ Filtrando...' : '🔍 Checar Números Ativos'}
+                    </button>
+                  </div>
+                  <p className="text-[11px] text-slate-400 font-medium">
+                    Verifique se os contatos selecionados possuem conta registrada no WhatsApp para proteger seu chip contra bloqueios.
+                  </p>
+
+                  {waCheckResults && (
+                    <div className="mt-3 p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-2.5 animate-in fade-in duration-200">
+                      <div className="flex items-center justify-between text-xs font-bold">
+                        <span className="text-emerald-700 bg-emerald-50 px-2 py-1 rounded-md border border-emerald-200">
+                          ✅ {waCheckResults.valid.length} com WhatsApp Ativo
+                        </span>
+                        <span className="text-red-700 bg-red-50 px-2 py-1 rounded-md border border-red-200">
+                          ❌ {waCheckResults.invalid.length} Sem WhatsApp / Inválido
+                        </span>
+                      </div>
+
+                      {waCheckResults.valid.length > 0 && (
+                        <button
+                          type="button"
+                          onClick={handleApplyOnlyValidNumbers}
+                          className="w-full py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black rounded-lg transition-colors shadow-sm cursor-pointer"
+                        >
+                          🚀 Manter Apenas os {waCheckResults.valid.length} Números Válidos no Disparo
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
               </div>
 
               {/* Coluna direita: Mensagem e Configurações */}
