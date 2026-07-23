@@ -1551,18 +1551,13 @@ export default function App({ session }) {
     try {
       const targetInstance = (userRole === 'superadmin' && !selectedConfigCompanyId) ? 'superadmin' : (userRole === 'superadmin' ? (selectedConfigCompanyId || 'superadmin') : companyId);
       
-      // Usa rota relativa se estiver na mesma origem, ou HTTPS segura de produção para o Vercel
-      const endpointUrl = window.location.hostname === 'app.nexalecrm.com.br' || window.location.hostname === 'localhost'
-        ? `/evolution/chat/whatsappNumbers/${targetInstance}`
-        : `https://app.nexalecrm.com.br/evolution/chat/whatsappNumbers/${targetInstance}`;
-
       const formattedNumbers = numbersToCheck.map(n => {
         let clean = String(n).replace(/\D/g, '');
         if (clean.length === 10 || clean.length === 11) clean = '55' + clean;
         return clean;
       });
 
-      const res = await fetch(endpointUrl, {
+      const res = await fetch(`/evolution/chat/whatsappNumbers/${targetInstance}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'apikey': '123' },
         body: JSON.stringify({ numbers: formattedNumbers })
