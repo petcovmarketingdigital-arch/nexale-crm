@@ -3,7 +3,7 @@
   "rewrites": [
     {
       "source": "/evolution/:path*",
-      "destination": "http://187.77.243.166:8080/:path*"
+      "destination": "https://app.nexalecrm.com.br/evolution/:path*"
     },
     {
       "source": "/(.*)",
