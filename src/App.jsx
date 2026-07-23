@@ -1570,11 +1570,28 @@ export default function App({ session }) {
       const invalid = [];
 
       if (Array.isArray(data)) {
+        // Mapeia todos os contatos testados para vincular nome + telefone aos resultados
+        const allTestedContacts = [
+          ...filteredLeadsList.filter(l => campSelectedLeads.includes(l.id)).map(l => ({ nome: l.empresa || l.contato || 'Lead', telefone: l.telefone })),
+          ...externalContactsList.map(c => ({ nome: c.nome, telefone: c.telefone }))
+        ];
+
         data.forEach(item => {
+          const rawNum = String(item?.number || item?.jid || '').replace(/\D/g, '');
+          
+          const matched = allTestedContacts.find(c => {
+            let clean = String(c.telefone).replace(/\D/g, '');
+            if (clean.length === 10 || clean.length === 11) clean = '55' + clean;
+            return clean === rawNum || clean.slice(2) === rawNum || rawNum.endsWith(clean.slice(2));
+          });
+
+          const name = matched?.nome || 'Contato';
+          const phone = matched?.telefone || item?.number || 'Número';
+
           if (item && item.exists) {
-            valid.push(item);
+            valid.push({ ...item, name, phone });
           } else {
-            invalid.push(item || { number: 'Número Inválido', exists: false });
+            invalid.push({ ...item, name, phone });
           }
         });
         setWaCheckResults({ valid, invalid });
@@ -2545,7 +2562,7 @@ export default function App({ session }) {
 
                   {waCheckResults && (
                     <div className="mt-3 p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-2.5 animate-in fade-in duration-200">
-                      <div className="flex items-center justify-between text-xs font-bold">
+                      <div className="flex items-center justify-between text-xs font-bold flex-wrap gap-1">
                         <span className="text-emerald-700 bg-emerald-50 px-2 py-1 rounded-md border border-emerald-200">
                           ✅ {waCheckResults.valid.length} com WhatsApp Ativo
                         </span>
@@ -2553,6 +2570,23 @@ export default function App({ session }) {
                           ❌ {waCheckResults.invalid.length} Sem WhatsApp / Inválido
                         </span>
                       </div>
+
+                      {/* ❌ Lista Detalhada de Números Inválidos */}
+                      {waCheckResults.invalid.length > 0 && (
+                        <div className="bg-red-50/80 border border-red-200 rounded-xl p-2.5 text-xs space-y-1.5">
+                          <p className="font-bold text-red-800 text-[11px] flex items-center gap-1">
+                            <span>⚠️</span> Contatos sem WhatsApp / Inválidos ({waCheckResults.invalid.length}):
+                          </p>
+                          <div className="max-h-28 overflow-y-auto space-y-1 pr-1">
+                            {waCheckResults.invalid.map((inv, idx) => (
+                              <div key={idx} className="flex justify-between items-center bg-white px-2.5 py-1.5 rounded-lg border border-red-100 shadow-2xs text-[11px]">
+                                <span className="font-bold text-slate-700 truncate max-w-[140px]">{inv.name}</span>
+                                <span className="font-mono text-red-600 font-bold bg-red-50 px-1.5 py-0.5 rounded">{inv.phone}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
 
                       {waCheckResults.valid.length > 0 && (
                         <button
