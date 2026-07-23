@@ -1549,7 +1549,8 @@ export default function App({ session }) {
     setWaCheckResults(null);
 
     try {
-      const targetInstance = (userRole === 'superadmin' && !selectedConfigCompanyId) ? 'superadmin' : (userRole === 'superadmin' ? (selectedConfigCompanyId || 'superadmin') : companyId);
+      // Para superadmin, o WhatsApp oficial da plataforma é a instância 'superadmin'
+      const targetInstance = userRole === 'superadmin' ? 'superadmin' : (companyId || 'superadmin');
       
       const formattedNumbers = numbersToCheck.map(n => {
         let clean = String(n).replace(/\D/g, '');
@@ -1563,28 +1564,26 @@ export default function App({ session }) {
         body: JSON.stringify({ numbers: formattedNumbers })
       });
 
-      if (!res.ok) {
-        throw new Error(`Servidor de WhatsApp indisponível. Verifique se o seu WhatsApp está conectado.`);
-      }
+      const data = await res.json().catch(() => null);
 
-      const data = await res.json();
       const valid = [];
       const invalid = [];
 
       if (Array.isArray(data)) {
         data.forEach(item => {
-          if (item.exists) {
+          if (item && item.exists) {
             valid.push(item);
           } else {
-            invalid.push(item);
+            invalid.push(item || { number: 'Número Inválido', exists: false });
           }
         });
+        setWaCheckResults({ valid, invalid });
+      } else {
+        throw new Error('Sua conexão de WhatsApp não está ativa. Verifique no menu WhatsApp se a instância está conectada.');
       }
-
-      setWaCheckResults({ valid, invalid });
     } catch (err) {
       console.error('Erro na verificação de números:', err);
-      alert(`Falha ao checar números no WhatsApp: ${err.message}`);
+      alert(`Atenção: ${err.message || 'Verifique se o seu WhatsApp está conectado.'}`);
     } finally {
       setWaCheckLoading(false);
     }
