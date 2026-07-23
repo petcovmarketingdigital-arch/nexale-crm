@@ -1493,11 +1493,11 @@ export default function App({ session }) {
 
   const getCampFilteredLeadsList = () => {
     try {
-      const saLeads = (superAdminLeads || []).map(c => ({
+      const saLeads = (allCompanies || []).map(c => ({
         id: c.id,
-        contato: c.nome || '',
-        empresa: c.empresa || '',
-        telefone: c.telefone || '',
+        empresa: c.name,
+        contato: c.name,
+        telefone: c.phone || '',
         temperatura: c.sa_temperatura || 'Frio',
         coluna: c.sa_stage || 'leads',
         valor: c.sa_valor || 0
