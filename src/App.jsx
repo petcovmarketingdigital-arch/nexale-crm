@@ -1570,10 +1570,10 @@ export default function App({ session }) {
       const invalid = [];
 
       if (Array.isArray(data)) {
-        // Mapeia todos os contatos testados para vincular nome + telefone aos resultados
+        // Mapeia todos os contatos testados para vincular nome, ID do lead e telefone aos resultados
         const allTestedContacts = [
-          ...filteredLeadsList.filter(l => campSelectedLeads.includes(l.id)).map(l => ({ nome: l.empresa || l.contato || 'Lead', telefone: l.telefone })),
-          ...externalContactsList.map(c => ({ nome: c.nome, telefone: c.telefone }))
+          ...filteredLeadsList.filter(l => campSelectedLeads.includes(l.id)).map(l => ({ id: l.id, nome: l.empresa || l.contato || 'Lead', telefone: l.telefone, isCrm: true })),
+          ...externalContactsList.map(c => ({ id: null, nome: c.nome, telefone: c.telefone, isCrm: false }))
         ];
 
         data.forEach(item => {
@@ -1585,13 +1585,15 @@ export default function App({ session }) {
             return clean === rawNum || clean.slice(2) === rawNum || rawNum.endsWith(clean.slice(2));
           });
 
+          const id = matched?.id || null;
+          const isCrm = matched?.isCrm || false;
           const name = matched?.nome || 'Contato';
           const phone = matched?.telefone || item?.number || 'Número';
 
           if (item && item.exists) {
-            valid.push({ ...item, name, phone });
+            valid.push({ ...item, id, name, phone, isCrm });
           } else {
-            invalid.push({ ...item, name, phone });
+            invalid.push({ ...item, id, name, phone, isCrm });
           }
         });
         setWaCheckResults({ valid, invalid });
@@ -2166,11 +2168,11 @@ export default function App({ session }) {
                                 {card.origem || 'Novo Lead'}
                               </span>
                             </div>
-                            <div className="flex items-center gap-1 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
-                              <button onClick={() => handleEditClick(card)} className="text-slate-400 hover:text-indigo-500 p-1 bg-slate-50 rounded" title="Editar lead">
+                            <div className="flex items-center gap-1 transition-opacity">
+                              <button onClick={() => handleEditClick(card)} className="text-slate-400 hover:text-indigo-600 p-1 bg-slate-50 hover:bg-indigo-50 rounded transition-colors" title="Editar lead">
                                 <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>
                               </button>
-                              <button onClick={() => handleDeleteCard(card.id, column.id)} className="text-slate-400 hover:text-red-500 p-1 bg-slate-50 rounded" title="Excluir lead">
+                              <button onClick={() => handleDeleteLead(card.id)} className="text-slate-400 hover:text-red-600 p-1 bg-slate-50 hover:bg-red-50 rounded transition-colors" title="Excluir lead do CRM">
                                 <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
                               </button>
                             </div>
@@ -2577,11 +2579,32 @@ export default function App({ session }) {
                           <p className="font-bold text-red-800 text-[11px] flex items-center gap-1">
                             <span>⚠️</span> Contatos sem WhatsApp / Inválidos ({waCheckResults.invalid.length}):
                           </p>
-                          <div className="max-h-28 overflow-y-auto space-y-1 pr-1">
+                          <div className="max-h-36 overflow-y-auto space-y-1 pr-1">
                             {waCheckResults.invalid.map((inv, idx) => (
-                              <div key={idx} className="flex justify-between items-center bg-white px-2.5 py-1.5 rounded-lg border border-red-100 shadow-2xs text-[11px]">
-                                <span className="font-bold text-slate-700 truncate max-w-[140px]">{inv.name}</span>
-                                <span className="font-mono text-red-600 font-bold bg-red-50 px-1.5 py-0.5 rounded">{inv.phone}</span>
+                              <div key={idx} className="flex justify-between items-center bg-white px-2.5 py-1.5 rounded-lg border border-red-100 shadow-2xs text-[11px] gap-2">
+                                <div className="min-w-0 flex-1">
+                                  <p className="font-bold text-slate-700 truncate">{inv.name}</p>
+                                  <p className="font-mono text-red-600 font-semibold text-[10px]">{inv.phone}</p>
+                                </div>
+                                {inv.isCrm && inv.id ? (
+                                  <button
+                                    type="button"
+                                    onClick={async () => {
+                                      await handleDeleteLead(inv.id);
+                                      setWaCheckResults(prev => ({
+                                        ...prev,
+                                        invalid: prev.invalid.filter(x => x.id !== inv.id)
+                                      }));
+                                    }}
+                                    className="px-2 py-1 bg-red-50 hover:bg-red-100 text-red-700 rounded-md text-[10px] font-bold flex items-center gap-1 transition-colors border border-red-200 cursor-pointer shrink-0"
+                                    title="Excluir este lead permanentemente do CRM"
+                                  >
+                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                                    Excluir Lead
+                                  </button>
+                                ) : (
+                                  <span className="text-[10px] text-slate-400 font-medium">Externa</span>
+                                )}
                               </div>
                             ))}
                           </div>
