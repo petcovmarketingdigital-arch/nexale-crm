@@ -1492,21 +1492,30 @@ export default function App({ session }) {
   };
 
   const getCampFilteredLeadsList = () => {
-    const saLeads = (superAdminLeads || []).map(c => ({
-      id: c.id,
-      contato: c.nome,
-      empresa: c.empresa,
-      telefone: c.telefone,
-      temperatura: c.sa_temperatura || 'Frio',
-      coluna: c.sa_stage || 'leads',
-      valor: c.sa_valor || 0
-    }));
-    const allLeads = userRole === 'superadmin' ? saLeads : columns.flatMap(col => col.cards.map(c => ({ ...c, coluna: col.id })));
-    return allLeads.filter(l => {
-      if (campFilter.coluna !== 'all' && l.coluna !== campFilter.coluna) return false;
-      if (campFilter.temperatura !== 'all' && l.temperatura !== campFilter.temperatura) return false;
-      return l.telefone && l.telefone !== 'Não informado';
-    });
+    try {
+      const saLeads = (superAdminLeads || []).map(c => ({
+        id: c.id,
+        contato: c.nome || '',
+        empresa: c.empresa || '',
+        telefone: c.telefone || '',
+        temperatura: c.sa_temperatura || 'Frio',
+        coluna: c.sa_stage || 'leads',
+        valor: c.sa_valor || 0
+      }));
+      const allLeads = userRole === 'superadmin' 
+        ? saLeads 
+        : (columns || []).flatMap(col => (col?.cards || []).map(c => ({ ...c, coluna: col?.id })));
+
+      return (allLeads || []).filter(l => {
+        if (!l || !l.telefone) return false;
+        if (campFilter?.coluna && campFilter.coluna !== 'all' && l.coluna !== campFilter.coluna) return false;
+        if (campFilter?.temperatura && campFilter.temperatura !== 'all' && l.temperatura !== campFilter.temperatura) return false;
+        return l.telefone !== 'Não informado';
+      });
+    } catch (e) {
+      console.error('Erro em getCampFilteredLeadsList:', e);
+      return [];
+    }
   };
 
   const handleCheckWhatsAppNumbers = async () => {
