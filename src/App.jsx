@@ -456,10 +456,57 @@ export default function App({ session }) {
   const [showBolsaoModal, setShowBolsaoModal] = useState(false);
   const [slaNow, setSlaNow] = useState(Date.now());
 
+  const handlePushToBolsao = async (cardId, forceRetido = false) => {
+    try {
+      const nowIso = new Date().toISOString();
+      const card = columns.flatMap(col => col.cards).find(c => c.id === cardId);
+      if (!card) return;
+
+      const nextCount = (card.bolsao_count || 0) + 1;
+      const shouldRetain = forceRetido || nextCount >= (maxRotations || 2);
+
+      const updatePayload = shouldRetain ? {
+        retido_gestor: true,
+        in_bolsao: false,
+        bolsao_count: nextCount,
+        origem: 'Retido pelo Gestor'
+      } : {
+        in_bolsao: true,
+        bolsao_entered_at: nowIso,
+        bolsao_count: nextCount
+      };
+
+      await supabase.from('leads').update(updatePayload).eq('id', cardId);
+
+      setColumns(prevCols => prevCols.map(col => ({
+        ...col,
+        cards: col.cards.map(c => c.id === cardId ? { ...c, ...updatePayload } : c)
+      })));
+    } catch (e) {
+      console.error('Erro ao mover lead para bolsão:', e.message);
+    }
+  };
+
   useEffect(() => {
-    const interval = setInterval(() => setSlaNow(Date.now()), 10000);
+    const interval = setInterval(() => {
+      const now = Date.now();
+      setSlaNow(now);
+
+      if (columns && columns.length > 0) {
+        columns.flatMap(col => col.cards).forEach(card => {
+          if (!card.first_touched_at && !card.in_bolsao && !card.retido_gestor && card.assigned_at) {
+            const assignedTime = new Date(card.assigned_at).getTime();
+            const elapsedSec = Math.floor((now - assignedTime) / 1000);
+            const totalSlaSec = (slaMinutes || 20) * 60;
+            if (totalSlaSec - elapsedSec <= 0) {
+              handlePushToBolsao(card.id);
+            }
+          }
+        });
+      }
+    }, 10000);
     return () => clearInterval(interval);
-  }, []);
+  }, [columns, slaMinutes, maxRotations]);
 
   const handleLoadPromptTemplate = (nichoKey) => {
     const template = AI_PROMPTS_TEMPLATES[nichoKey];
@@ -2168,6 +2215,37 @@ export default function App({ session }) {
             })}
           </div>
 
+          {/* Banner do Bolsão no Topo do Kanban */}
+          {(() => {
+            const bolsaoCards = columns.flatMap(col => col.cards.filter(c => c.in_bolsao));
+            if (bolsaoCards.length === 0) return null;
+            return (
+              <div className="mb-4 bg-gradient-to-r from-amber-500 to-orange-600 rounded-2xl p-4 text-white shadow-md flex items-center justify-between flex-wrap gap-3 animate-fade-in">
+                <div className="flex items-center gap-3">
+                  <span className="text-2xl bg-white/20 p-2.5 rounded-xl backdrop-blur-xs">💼</span>
+                  <div>
+                    <h3 className="font-black text-base flex items-center gap-2">
+                      Bolsão de Oportunidades
+                      <span className="bg-white text-orange-700 text-xs px-2.5 py-0.5 rounded-full font-black">
+                        {bolsaoCards.length} disponível{bolsaoCards.length > 1 ? 'is' : ''}
+                      </span>
+                    </h3>
+                    <p className="text-xs text-amber-100 font-medium">
+                      Leads que estouraram o prazo de atendimento. Qualquer membro da equipe pode resgatar para atender agora!
+                    </p>
+                  </div>
+                </div>
+
+                <button
+                  onClick={() => setShowBolsaoModal(true)}
+                  className="bg-white hover:bg-amber-50 text-orange-700 font-black text-xs px-4 py-2.5 rounded-xl shadow-sm transition-all cursor-pointer flex items-center gap-1.5"
+                >
+                  🚀 Ver & Resgatar Leads ({bolsaoCards.length})
+                </button>
+              </div>
+            );
+          })()}
+
           <div className="flex overflow-x-auto pb-4 gap-4 items-start minimal-scrollbar h-[calc(100dvh-250px)] min-h-[500px]">
             {columns.map((column, colIndex) => (
               <div 
@@ -2214,18 +2292,21 @@ export default function App({ session }) {
                       </button>
                     </div>
                   )}
-                  <span className="bg-white text-slate-600 text-xs px-2 py-1 rounded-md font-bold shadow-sm shadow-indigo-900/5">{column.cards.length}</span>
+                  <span className="bg-white text-slate-600 text-xs px-2 py-1 rounded-md font-bold shadow-sm shadow-indigo-900/5">
+                    {column.cards.filter(c => !c.in_bolsao).length}
+                  </span>
                 </div>
                 
                 <div className="space-y-3 overflow-y-auto flex-1 custom-scrollbar pr-1">
                   {column.cards
                     .filter(card => {
+                      const notBolsao = !card.in_bolsao;
                       const matchSearch = 
                         card.empresa.toLowerCase().includes(searchTerm.toLowerCase()) ||
                         card.contato.toLowerCase().includes(searchTerm.toLowerCase()) ||
                         card.telefone.toLowerCase().includes(searchTerm.toLowerCase());
                       const matchOrigem = selectedOrigem === 'all' || (card.origem || 'Novo Lead') === selectedOrigem;
-                      return matchSearch && matchOrigem;
+                      return notBolsao && matchSearch && matchOrigem;
                     })
                     .map((card) => {
                       const isAtrasado = card.dataRetorno && new Date(card.dataRetorno) < new Date();
@@ -2336,16 +2417,29 @@ export default function App({ session }) {
                             const sla = getLeadSlaStatus(card);
                             if (!sla.label) return null;
                             return (
-                              <div className={`mb-3 px-2 py-1 rounded-md text-[10px] font-bold flex items-center gap-1.5 w-fit ${
-                                sla.type === 'retido' ? 'bg-red-100 text-red-800 border border-red-300' :
-                                sla.type === 'bolsao' ? 'bg-amber-100 text-amber-900 border border-amber-300' :
-                                sla.type === 'expired' ? 'bg-red-100 text-red-700 border border-red-200 animate-pulse' :
-                                sla.type === 'warning' ? 'bg-amber-100 text-amber-800 border border-amber-200 animate-pulse' :
-                                sla.type === 'active' ? 'bg-indigo-50 text-indigo-700 border border-indigo-200' :
-                                'bg-slate-100 text-slate-600'
-                              }`}>
-                                <span>{sla.type === 'retido' ? '🛑' : sla.type === 'bolsao' ? '💼' : '⏳'}</span>
-                                <span>{sla.label}</span>
+                              <div className="mb-3 space-y-1">
+                                <div className={`px-2 py-1 rounded-md text-[10px] font-bold flex items-center gap-1.5 w-fit ${
+                                  sla.type === 'retido' ? 'bg-red-100 text-red-800 border border-red-300' :
+                                  sla.type === 'bolsao' ? 'bg-amber-100 text-amber-900 border border-amber-300' :
+                                  sla.type === 'expired' ? 'bg-red-100 text-red-700 border border-red-200 animate-pulse' :
+                                  sla.type === 'warning' ? 'bg-amber-100 text-amber-800 border border-amber-200 animate-pulse' :
+                                  sla.type === 'active' ? 'bg-indigo-50 text-indigo-700 border border-indigo-200' :
+                                  'bg-slate-100 text-slate-600'
+                                }`}>
+                                  <span>{sla.type === 'retido' ? '🛑' : sla.type === 'bolsao' ? '💼' : '⏳'}</span>
+                                  <span>{sla.label}</span>
+                                </div>
+
+                                {sla.type === 'expired' && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handlePushToBolsao(card.id)}
+                                    className="px-2.5 py-1 bg-red-600 hover:bg-red-700 text-white rounded-md text-[10px] font-extrabold flex items-center gap-1 transition-all cursor-pointer shadow-sm"
+                                    title="Enviar este lead para o Bolsão de Oportunidades agora"
+                                  >
+                                    💼 Mover p/ Bolsão Agora
+                                  </button>
+                                )}
                               </div>
                             );
                           })()}
