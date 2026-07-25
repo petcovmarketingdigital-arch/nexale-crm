@@ -1467,8 +1467,8 @@ export default function App({ session }) {
 
   const getLeadSlaStatus = (card) => {
     if (card.retido_gestor) return { type: 'retido', label: '🛑 Retido pelo Gestor (2 Rodízios)' };
-    if (card.in_bolsao) return { type: 'bolsao', label: '💼 No Bolsão de Leads' };
-    if (card.first_touched_at) return { type: 'ok', label: '✅ Atendido' };
+    if (card.in_bolsao) return { type: 'bolsao', label: '💼 No Bolsão (Aguardando Resgate)' };
+    if (card.first_touched_at) return { type: 'ok', label: '✅ 1º Atendimento Realizado' };
     if (!card.assigned_at) return { type: 'normal', label: null };
     
     const assignedTime = new Date(card.assigned_at).getTime();
@@ -1477,7 +1477,7 @@ export default function App({ session }) {
     const remainingSec = totalSlaSec - elapsedSec;
 
     if (remainingSec <= 0) {
-      return { type: 'expired', label: '⚠️ SLA Estourado!' };
+      return { type: 'expired', label: '⚠️ SLA Estourado (> 20 min)' };
     }
 
     const m = Math.floor(remainingSec / 60);
@@ -1486,7 +1486,7 @@ export default function App({ session }) {
     
     return {
       type: remainingSec < 300 ? 'warning' : 'active',
-      label: `⏳ ${timeStr} p/ atender`
+      label: `⏳ ${timeStr} p/ atender (SLA)`
     };
   };
 
