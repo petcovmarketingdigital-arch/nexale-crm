@@ -447,6 +447,20 @@ export default function App({ session }) {
   const [isUploadingLogo, setIsUploadingLogo] = useState(false);
   const [templateLoadedMsg, setTemplateLoadedMsg] = useState('');
 
+  // 🔄 Rodízio, SLA & Bolsão de Leads (C2S Style)
+  const [rotativaEnabled, setRotativaEnabled] = useState(true);
+  const [slaMinutes, setSlaMinutes] = useState(20);
+  const [bolsaoMaxMinutes, setBolsaoMaxMinutes] = useState(30);
+  const [maxRotations, setMaxRotations] = useState(2);
+  const [showSlaReportModal, setShowSlaReportModal] = useState(false);
+  const [showBolsaoModal, setShowBolsaoModal] = useState(false);
+  const [slaNow, setSlaNow] = useState(Date.now());
+
+  useEffect(() => {
+    const interval = setInterval(() => setSlaNow(Date.now()), 10000);
+    return () => clearInterval(interval);
+  }, []);
+
   const handleLoadPromptTemplate = (nichoKey) => {
     const template = AI_PROMPTS_TEMPLATES[nichoKey];
     if (template) {
@@ -582,7 +596,13 @@ export default function App({ session }) {
           origem: dbLead.origem || 'Novo Lead',
           ai_paused: !!dbLead.ai_paused,
           dados_nicho: dbLead.dados_nicho || {},
-          user_id: dbLead.user_id
+          user_id: dbLead.user_id,
+          assigned_at: dbLead.assigned_at || dbLead.data_criacao,
+          first_touched_at: dbLead.first_touched_at || null,
+          in_bolsao: !!dbLead.in_bolsao,
+          bolsao_entered_at: dbLead.bolsao_entered_at || null,
+          bolsao_count: Number(dbLead.bolsao_count) || 0,
+          retido_gestor: !!dbLead.retido_gestor
         };
         const targetCol = cols.find(c => c.id === dbLead.coluna_id) || cols[0];
         targetCol.cards.push(lead);
@@ -1397,7 +1417,12 @@ export default function App({ session }) {
     setDraggedCard(null);
 
     // Salva no banco
-    const updateData = { coluna_id: targetColId, data_movimentacao: new Date().toISOString() };
+    const updateData = { 
+      coluna_id: targetColId, 
+      data_movimentacao: new Date().toISOString(),
+      first_touched_at: card.first_touched_at || new Date().toISOString(),
+      in_bolsao: false
+    };
     if (reason) updateData.motivo_perda = reason;
     if (targetColId !== 'leads') {
       updateData.ai_paused = true;
@@ -1437,6 +1462,52 @@ export default function App({ session }) {
       }));
 
       await supabase.from('leads').delete().eq('id', cardId);
+    }
+  };
+
+  const getLeadSlaStatus = (card) => {
+    if (card.retido_gestor) return { type: 'retido', label: '🛑 Retido pelo Gestor (2 Rodízios)' };
+    if (card.in_bolsao) return { type: 'bolsao', label: '💼 No Bolsão de Leads' };
+    if (card.first_touched_at) return { type: 'ok', label: '✅ Atendido' };
+    if (!card.assigned_at) return { type: 'normal', label: null };
+    
+    const assignedTime = new Date(card.assigned_at).getTime();
+    const elapsedSec = Math.floor((slaNow - assignedTime) / 1000);
+    const totalSlaSec = (slaMinutes || 20) * 60;
+    const remainingSec = totalSlaSec - elapsedSec;
+
+    if (remainingSec <= 0) {
+      return { type: 'expired', label: '⚠️ SLA Estourado!' };
+    }
+
+    const m = Math.floor(remainingSec / 60);
+    const s = Math.floor(remainingSec % 60);
+    const timeStr = `${m}:${s < 10 ? '0' : ''}${s}`;
+    
+    return {
+      type: remainingSec < 300 ? 'warning' : 'active',
+      label: `⏳ ${timeStr} p/ atender`
+    };
+  };
+
+  const handleClaimBolsaoLead = async (leadId) => {
+    try {
+      const nowIso = new Date().toISOString();
+      const { error } = await supabase.from('leads').update({
+        user_id: session.user.id,
+        in_bolsao: false,
+        retido_gestor: false,
+        assigned_at: nowIso,
+        first_touched_at: null,
+        origem: 'Resgatado do Bolsão'
+      }).eq('id', leadId);
+
+      if (error) throw error;
+      alert('🚀 Sucesso! Lead resgatado com sucesso e atribuído a você!');
+      setShowBolsaoModal(false);
+      fetchLeads();
+    } catch (e) {
+      alert('Erro ao resgatar lead: ' + e.message);
     }
   };
 
@@ -1897,6 +1968,27 @@ export default function App({ session }) {
           </div>
 
           <button 
+            onClick={() => setShowBolsaoModal(true)}
+            className="bg-amber-500 hover:bg-amber-600 text-slate-900 font-bold px-3 py-1.5 rounded-lg transition-colors shadow-sm shadow-amber-900/5 text-sm flex items-center gap-1.5 cursor-pointer"
+            title="Bolsão de Oportunidades (Resgate de Clientes)"
+          >
+            💼 Bolsão {(() => {
+              const count = columns.flatMap(col => col.cards.filter(c => c.in_bolsao)).length;
+              return count > 0 ? <span className="bg-white text-amber-800 text-xs px-1.5 py-0.5 rounded-full font-black">{count}</span> : null;
+            })()}
+          </button>
+
+          {(userRole === 'admin' || userRole === 'superadmin') && (
+            <button 
+              onClick={() => setShowSlaReportModal(true)}
+              className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold px-3 py-1.5 rounded-lg transition-colors shadow-sm text-sm flex items-center gap-1 cursor-pointer"
+              title="Relatório de Atendimento Corretor vs SLA"
+            >
+              📊 SLA Corretores
+            </button>
+          )}
+
+          <button 
             onClick={() => setShowScraperModal(true)}
             className="bg-purple-600 hover:bg-purple-700 text-slate-900 font-medium px-3 py-1.5 rounded-lg transition-colors shadow-sm shadow-indigo-900/5 text-sm"
           >
@@ -2236,6 +2328,31 @@ export default function App({ session }) {
                             }`}>
                               {muitoParado ? '🔥' : diasParado >= 1 ? '⏳' : '✅'}
                               {diasParado === 0 ? 'Movido hoje' : `${diasParado} dia${diasParado > 1 ? 's' : ''} aqui`}
+                            </div>
+                          )}
+
+                          {/* ⏳ Badge de Temporizador SLA / Bolsão */}
+                          {(() => {
+                            const sla = getLeadSlaStatus(card);
+                            if (!sla.label) return null;
+                            return (
+                              <div className={`mb-3 px-2 py-1 rounded-md text-[10px] font-bold flex items-center gap-1.5 w-fit ${
+                                sla.type === 'retido' ? 'bg-red-100 text-red-800 border border-red-300' :
+                                sla.type === 'bolsao' ? 'bg-amber-100 text-amber-900 border border-amber-300' :
+                                sla.type === 'expired' ? 'bg-red-100 text-red-700 border border-red-200 animate-pulse' :
+                                sla.type === 'warning' ? 'bg-amber-100 text-amber-800 border border-amber-200 animate-pulse' :
+                                sla.type === 'active' ? 'bg-indigo-50 text-indigo-700 border border-indigo-200' :
+                                'bg-slate-100 text-slate-600'
+                              }`}>
+                                <span>{sla.type === 'retido' ? '🛑' : sla.type === 'bolsao' ? '💼' : '⏳'}</span>
+                                <span>{sla.label}</span>
+                              </div>
+                            );
+                          })()}
+
+                          {card.bolsao_count > 0 && !card.retido_gestor && (
+                            <div className="mb-3 px-2 py-0.5 rounded-md text-[9px] font-bold bg-orange-100 text-orange-800 border border-orange-200 flex items-center gap-1 w-fit">
+                              ⚡ Retornado do Bolsão ({card.bolsao_count}ª tentativa)
                             </div>
                           )}
 
@@ -3779,6 +3896,179 @@ export default function App({ session }) {
 
             <div className="flex justify-end gap-3">
               <button type="button" onClick={() => setShowLinkModal(false)} className="px-4 py-2 text-sm font-medium text-slate-500 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer">Fechar</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL DE BOLSÃO DE LEADS (POOL DE RESGATE) */}
+      {showBolsaoModal && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fade-in">
+          <div className="bg-white rounded-3xl shadow-2xl max-w-2xl w-full p-6 space-y-4 max-h-[85vh] flex flex-col">
+            <div className="flex justify-between items-center pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-2">
+                <span className="text-2xl">💼</span>
+                <div>
+                  <h3 className="text-lg font-black text-slate-800">Bolsão de Oportunidades</h3>
+                  <p className="text-xs text-slate-500">Leads que estouraram o prazo de atendimento. Resgate com 1 clique!</p>
+                </div>
+              </div>
+              <button onClick={() => setShowBolsaoModal(false)} className="text-slate-400 hover:text-slate-600 font-bold text-lg cursor-pointer">✕</button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto space-y-3 pr-1">
+              {(() => {
+                const bCards = columns.flatMap(col => col.cards.filter(c => c.in_bolsao));
+                if (bCards.length === 0) {
+                  return (
+                    <div className="text-center py-12 text-slate-400 space-y-2">
+                      <span className="text-4xl block">🎉</span>
+                      <p className="font-bold text-sm text-slate-600">Nenhum lead estagnado no bolsão!</p>
+                      <p className="text-xs">Sua equipe está atendendo todos os clientes no prazo.</p>
+                    </div>
+                  );
+                }
+
+                return bCards.map(c => {
+                  const enteredDate = c.bolsao_entered_at ? new Date(c.bolsao_entered_at) : new Date();
+                  const minInBolsao = Math.floor((Date.now() - enteredDate.getTime()) / (1000 * 60));
+                  return (
+                    <div key={c.id} className="bg-slate-50 border border-slate-200 rounded-2xl p-4 flex items-center justify-between gap-4 hover:border-amber-300 transition-all">
+                      <div className="min-w-0 flex-1 space-y-1">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="font-black text-slate-800 text-sm">{c.empresa}</span>
+                          <span className="text-[10px] font-bold bg-amber-100 text-amber-800 px-2 py-0.5 rounded-md">
+                            ⏳ No Bolsão há {minInBolsao} min
+                          </span>
+                          <span className="text-[10px] font-bold bg-slate-200 text-slate-700 px-2 py-0.5 rounded-md">
+                            🔄 Rodízio {c.bolsao_count}/2
+                          </span>
+                        </div>
+                        <p className="text-xs text-slate-500 font-medium">👤 {c.contato} · 📞 {c.telefone}</p>
+                        {c.notas && <p className="text-[11px] text-amber-800 italic bg-amber-50/60 px-2 py-1 rounded border-l-2 border-amber-400">"{c.notas}"</p>}
+                      </div>
+
+                      <button
+                        onClick={() => handleClaimBolsaoLead(c.id)}
+                        className="bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs px-4 py-2.5 rounded-xl shadow-sm transition-all cursor-pointer shrink-0 flex items-center gap-1.5"
+                      >
+                        🚀 Resgatar Cliente
+                      </button>
+                    </div>
+                  );
+                });
+              })()}
+            </div>
+
+            <div className="pt-3 border-t border-slate-100 flex justify-end">
+              <button onClick={() => setShowBolsaoModal(false)} className="px-5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition-colors cursor-pointer">
+                Fechar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL DE RELATÓRIO CORRETOR VS ATENDIMENTO (SLA AUDIT) */}
+      {showSlaReportModal && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fade-in">
+          <div className="bg-white rounded-3xl shadow-2xl max-w-4xl w-full p-6 space-y-5 max-h-[90vh] flex flex-col">
+            <div className="flex justify-between items-center pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-2">
+                <span className="text-2xl">📊</span>
+                <div>
+                  <h3 className="text-lg font-black text-slate-800">Relatório Corretor vs Atendimento (SLA)</h3>
+                  <p className="text-xs text-slate-500">Auditoria de tempo de resposta, cumprimento de prazos e retenção por membro da equipe.</p>
+                </div>
+              </div>
+              <button onClick={() => setShowSlaReportModal(false)} className="text-slate-400 hover:text-slate-600 font-bold text-lg cursor-pointer">✕</button>
+            </div>
+
+            {/* KPIs Globais */}
+            {(() => {
+              const allCards = columns.flatMap(c => c.cards);
+              const totalLeads = allCards.length;
+              const retidosGestor = allCards.filter(c => c.retido_gestor).length;
+              const atendidosNoPrazo = allCards.filter(c => c.first_touched_at && (new Date(c.first_touched_at) - new Date(c.assigned_at)) <= (slaMinutes * 60 * 1000)).length;
+              const taxaSla = totalLeads > 0 ? Math.round((atendidosNoPrazo / totalLeads) * 100) : 100;
+
+              return (
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  <div className="bg-indigo-50 border border-indigo-100 p-3 rounded-2xl">
+                    <p className="text-[10px] font-black uppercase text-indigo-700">Total de Leads</p>
+                    <p className="text-xl font-black text-indigo-900">{totalLeads}</p>
+                  </div>
+                  <div className="bg-emerald-50 border border-emerald-100 p-3 rounded-2xl">
+                    <p className="text-[10px] font-black uppercase text-emerald-700">Atendidos no Prazo</p>
+                    <p className="text-xl font-black text-emerald-900">{taxaSla}% <span className="text-xs font-bold">({atendidosNoPrazo})</span></p>
+                  </div>
+                  <div className="bg-amber-50 border border-amber-100 p-3 rounded-2xl">
+                    <p className="text-[10px] font-black uppercase text-amber-700">No Bolsão Agora</p>
+                    <p className="text-xl font-black text-amber-900">{allCards.filter(c => c.in_bolsao).length}</p>
+                  </div>
+                  <div className="bg-red-50 border border-red-100 p-3 rounded-2xl">
+                    <p className="text-[10px] font-black uppercase text-red-700">Retidos c/ Gestor</p>
+                    <p className="text-xl font-black text-red-900">{retidosGestor}</p>
+                  </div>
+                </div>
+              );
+            })()}
+
+            {/* Tabela por Corretor */}
+            <div className="flex-1 overflow-y-auto border border-slate-200 rounded-2xl overflow-hidden">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="bg-slate-100 text-slate-700 text-[11px] font-black uppercase">
+                    <th className="p-3">Corretor / Vendedor</th>
+                    <th className="p-3 text-center">Recebidos</th>
+                    <th className="p-3 text-center">SLA No Prazo</th>
+                    <th className="p-3 text-center">Estourou SLA</th>
+                    <th className="p-3 text-center">Resgatados</th>
+                    <th className="p-3 text-center">Eficiência</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 text-xs">
+                  {(() => {
+                    const sellers = teamMembers.length > 0 ? teamMembers : [{ id: session?.user?.id, email: session?.user?.email }];
+                    const allCards = columns.flatMap(c => c.cards);
+
+                    return sellers.map(seller => {
+                      const sellerCards = allCards.filter(c => c.user_id === seller.id);
+                      const total = sellerCards.length;
+                      const noPrazo = sellerCards.filter(c => c.first_touched_at && (new Date(c.first_touched_at) - new Date(c.assigned_at)) <= (slaMinutes * 60 * 1000)).length;
+                      const estourou = sellerCards.filter(c => c.bolsao_count > 0 || c.in_bolsao || c.retido_gestor).length;
+                      const resgatados = sellerCards.filter(c => c.origem === 'Resgatado do Bolsão').length;
+                      const ef = total > 0 ? Math.round((noPrazo / total) * 100) : 100;
+
+                      return (
+                        <tr key={seller.id} className="hover:bg-slate-50 font-semibold text-slate-700">
+                          <td className="p-3 font-bold flex items-center gap-2">
+                            <span className="w-7 h-7 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center font-black text-xs">
+                              {seller.email.substring(0, 2).toUpperCase()}
+                            </span>
+                            {seller.email}
+                          </td>
+                          <td className="p-3 text-center font-mono font-bold">{total}</td>
+                          <td className="p-3 text-center text-emerald-600 font-mono font-bold">{noPrazo}</td>
+                          <td className="p-3 text-center text-red-600 font-mono font-bold">{estourou}</td>
+                          <td className="p-3 text-center text-amber-600 font-mono font-bold">{resgatados}</td>
+                          <td className="p-3 text-center">
+                            <span className={`px-2 py-1 rounded-md text-[10px] font-black ${ef >= 80 ? 'bg-emerald-100 text-emerald-800' : ef >= 50 ? 'bg-amber-100 text-amber-800' : 'bg-red-100 text-red-800'}`}>
+                              {ef}%
+                            </span>
+                          </td>
+                        </tr>
+                      );
+                    });
+                  })()}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="pt-3 border-t border-slate-100 flex justify-end">
+              <button onClick={() => setShowSlaReportModal(false)} className="px-5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition-colors cursor-pointer">
+                Fechar Relatório
+              </button>
             </div>
           </div>
         </div>

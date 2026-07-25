@@ -883,6 +883,98 @@ Regras de Atendimento:
   }
 });
 
+// 🔄 Rotina Automática de SLA & Redistribuição do Bolsão de Leads (C2S Style)
+async function processSlaAndBolsaoRedistribution() {
+  try {
+    const { data: activeCompanies } = await supabase.from('companies').select('*');
+    if (!activeCompanies || activeCompanies.length === 0) return;
+
+    for (const comp of activeCompanies) {
+      const slaMin = comp.sla_first_touch_minutes || 20;
+      const bolsaoMaxMin = comp.bolsao_max_minutes || 30;
+      const maxRotations = comp.max_rotations_before_manager || 2;
+      const now = new Date();
+
+      // 1. Checa estouro de SLA (atendimento inicial)
+      const { data: leadsToCheck } = await supabase
+        .from('leads')
+        .select('*')
+        .eq('company_id', comp.id)
+        .eq('in_bolsao', false)
+        .eq('retido_gestor', false)
+        .is('first_touched_at', null);
+
+      if (leadsToCheck && leadsToCheck.length > 0) {
+        for (const lead of leadsToCheck) {
+          const assignedDate = lead.assigned_at ? new Date(lead.assigned_at) : new Date(lead.data_criacao);
+          const elapsedMinutes = (now - assignedDate) / (1000 * 60);
+
+          if (elapsedMinutes >= slaMin) {
+            const nextBolsaoCount = (lead.bolsao_count || 0) + 1;
+            if (nextBolsaoCount >= maxRotations) {
+              // 🛑 2º Estouro -> Retido com o Gestor
+              console.log(`🛑 [SLA Worker] Lead ${lead.empresa} (${lead.id}) passou por ${nextBolsaoCount} rodízios sem atendimento. Retido com Gestor!`);
+              await supabase.from('leads').update({
+                retido_gestor: true,
+                in_bolsao: false,
+                bolsao_count: nextBolsaoCount,
+                origem: 'Retido pelo Gestor'
+              }).eq('id', lead.id);
+            } else {
+              // 💼 1º Estouro -> Vai para o Bolsão
+              console.log(`💼 [SLA Worker] Lead ${lead.empresa} (${lead.id}) estourou SLA de ${slaMin} min. Enviando para Bolsão!`);
+              await supabase.from('leads').update({
+                in_bolsao: true,
+                bolsao_entered_at: now.toISOString(),
+                bolsao_count: nextBolsaoCount
+              }).eq('id', lead.id);
+            }
+          }
+        }
+      }
+
+      // 2. Checa estouro de tempo do Bolsão (Redistribuição Automática)
+      const { data: bolsaoLeads } = await supabase
+        .from('leads')
+        .select('*')
+        .eq('company_id', comp.id)
+        .eq('in_bolsao', true);
+
+      if (bolsaoLeads && bolsaoLeads.length > 0) {
+        const { data: teamRoles } = await supabase.from('user_roles').select('*').eq('company_id', comp.id);
+        const activeSellers = (teamRoles || []).map(r => r.id);
+
+        for (const bLead of bolsaoLeads) {
+          if (bLead.bolsao_entered_at) {
+            const enteredDate = new Date(bLead.bolsao_entered_at);
+            const inBolsaoMinutes = (now - enteredDate) / (1000 * 60);
+
+            if (inBolsaoMinutes >= bolsaoMaxMin && activeSellers.length > 0) {
+              // Seleciona próximo vendedor em rodízio
+              const currIdx = activeSellers.indexOf(bLead.user_id);
+              const nextIdx = (currIdx + 1) % activeSellers.length;
+              const nextSellerId = activeSellers[nextIdx];
+
+              console.log(`🔄 [SLA Worker] Lead ${bLead.empresa} (${bLead.id}) expirou ${bolsaoMaxMin} min no Bolsão. Redistribuindo para vendedor ${nextSellerId}!`);
+              await supabase.from('leads').update({
+                user_id: nextSellerId,
+                in_bolsao: false,
+                assigned_at: now.toISOString(),
+                origem: 'Resgatado do Bolsão'
+              }).eq('id', bLead.id);
+            }
+          }
+        }
+      }
+    }
+  } catch (err) {
+    console.error('Erro no worker de SLA & Bolsão:', err.message);
+  }
+}
+
+// Executa a cada 60 segundos
+setInterval(processSlaAndBolsaoRedistribution, 60000);
+
 const PORT = 3001;
 app.listen(PORT, () => {
   console.log(`📡 Webhook Server escutando na porta ${PORT}`);
