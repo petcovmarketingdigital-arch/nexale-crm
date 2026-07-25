@@ -826,7 +826,8 @@ export default function App({ session }) {
             data_retorno: formData.dataRetorno || null,
             notas: formData.notas,
             origem: origemPadrao,
-            dados_nicho: formData.dados_nicho || {}
+            dados_nicho: formData.dados_nicho || {},
+            first_touched_at: new Date().toISOString()
           }]).select();
           
           if (error) throw error;
@@ -849,7 +850,7 @@ export default function App({ session }) {
               origem: dbLead.origem || 'Novo Lead',
               dados_nicho: dbLead.dados_nicho || {},
               assigned_at: new Date().toISOString(),
-              first_touched_at: null,
+              first_touched_at: new Date().toISOString(),
               in_bolsao: false,
               retido_gestor: false,
               bolsao_count: 0
