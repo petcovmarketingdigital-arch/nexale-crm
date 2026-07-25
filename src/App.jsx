@@ -646,7 +646,7 @@ export default function App({ session }) {
             ai_paused: !!dbLead.ai_paused,
             dados_nicho: dbLead.dados_nicho || {},
             user_id: dbLead.user_id,
-            assigned_at: dbLead.assigned_at || (isAutoCapture ? dbLead.data_criacao : null),
+            assigned_at: dbLead.assigned_at || null,
             first_touched_at: dbLead.first_touched_at || null,
             in_bolsao: !!dbLead.in_bolsao,
             bolsao_entered_at: dbLead.bolsao_entered_at || null,
