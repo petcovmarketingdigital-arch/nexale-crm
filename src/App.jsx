@@ -644,7 +644,7 @@ export default function App({ session }) {
           ai_paused: !!dbLead.ai_paused,
           dados_nicho: dbLead.dados_nicho || {},
           user_id: dbLead.user_id,
-          assigned_at: dbLead.assigned_at || dbLead.data_criacao,
+          assigned_at: dbLead.assigned_at || null,
           first_touched_at: dbLead.first_touched_at || null,
           in_bolsao: !!dbLead.in_bolsao,
           bolsao_entered_at: dbLead.bolsao_entered_at || null,
@@ -845,10 +845,14 @@ export default function App({ session }) {
               temperatura: dbLead.status_amostra,
               dataCriacao: new Date(dbLead.data_criacao).toLocaleDateString('pt-BR'),
               dataRetorno: dbLead.data_retorno,
-              notas: dbLead.notas,
               data_movimentacao: dbLead.data_movimentacao,
               origem: dbLead.origem || 'Novo Lead',
-              dados_nicho: dbLead.dados_nicho || {}
+              dados_nicho: dbLead.dados_nicho || {},
+              assigned_at: new Date().toISOString(),
+              first_touched_at: null,
+              in_bolsao: false,
+              retido_gestor: false,
+              bolsao_count: 0
             };
             setColumns(columns.map(col => {
               if (col.id === 'leads') {
