@@ -906,7 +906,8 @@ async function processSlaAndBolsaoRedistribution() {
 
       if (leadsToCheck && leadsToCheck.length > 0) {
         for (const lead of leadsToCheck) {
-          const assignedDate = lead.assigned_at ? new Date(lead.assigned_at) : new Date(lead.data_criacao);
+          if (!lead.assigned_at) continue;
+          const assignedDate = new Date(lead.assigned_at);
           const elapsedMinutes = (now - assignedDate) / (1000 * 60);
 
           if (elapsedMinutes >= slaMin) {
