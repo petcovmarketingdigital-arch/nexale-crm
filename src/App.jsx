@@ -3414,6 +3414,79 @@ export default function App({ session }) {
                 Isso altera dinamicamente os campos de captação na ficha dos Leads e a exibição de tags no funil.
               </p>
             </div>
+          </div>
+
+          {/* Card de Configurações de SLA & Rodízio (Estilo C2S) */}
+          <div className="bg-white p-8 rounded-xl shadow-sm shadow-indigo-900/5 border border-slate-100 text-left space-y-5">
+            <h2 className="text-xl font-black text-slate-800 flex items-center gap-2">
+              🔄 SLA de Atendimento & Rodízio de Leads (Estilo C2S)
+            </h2>
+            <p className="text-sm text-slate-500">
+              O gestor pode definir o tempo limite (SLA) para a equipe dar o primeiro atendimento aos novos clientes, além do tempo de Bolsão e retenção.
+            </p>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div className="space-y-2">
+                <label className="block text-xs font-bold text-slate-600 uppercase">Tempo de SLA (1º Atendimento)</label>
+                <select
+                  value={slaMinutes}
+                  onChange={async (e) => {
+                    const val = Number(e.target.value);
+                    setSlaMinutes(val);
+                    const activeId = userRole === 'superadmin' ? selectedConfigCompanyId : companyId;
+                    if (activeId) await supabase.from('companies').update({ sla_first_touch_minutes: val }).eq('id', activeId);
+                  }}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm font-semibold focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all cursor-pointer"
+                >
+                  <option value={5}>⚡ 5 minutos (Super rápido)</option>
+                  <option value={10}>⚡ 10 minutos</option>
+                  <option value={15}>⏱️ 15 minutos</option>
+                  <option value={20}>⏱️ 20 minutos (Padrão C2S)</option>
+                  <option value={30}>⏱️ 30 minutos</option>
+                  <option value={60}>⌛ 60 minutos (1 hora)</option>
+                </select>
+                <p className="text-[10px] text-slate-400">Tempo limite até o lead expirar e ir para o Bolsão.</p>
+              </div>
+
+              <div className="space-y-2">
+                <label className="block text-xs font-bold text-slate-600 uppercase">Tempo Limite no Bolsão</label>
+                <select
+                  value={bolsaoMaxMinutes}
+                  onChange={async (e) => {
+                    const val = Number(e.target.value);
+                    setBolsaoMaxMinutes(val);
+                    const activeId = userRole === 'superadmin' ? selectedConfigCompanyId : companyId;
+                    if (activeId) await supabase.from('companies').update({ bolsao_max_minutes: val }).eq('id', activeId);
+                  }}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm font-semibold focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all cursor-pointer"
+                >
+                  <option value={15}>⏱️ 15 minutos</option>
+                  <option value={30}>⏱️ 30 minutos (Padrão)</option>
+                  <option value={45}>⏱️ 45 minutos</option>
+                  <option value={60}>⌛ 60 minutos</option>
+                </select>
+                <p className="text-[10px] text-slate-400">Tempo sem resgate até redistribuir para outro corretor.</p>
+              </div>
+
+              <div className="space-y-2">
+                <label className="block text-xs font-bold text-slate-600 uppercase">Máximo de Rodízios p/ Gestor</label>
+                <select
+                  value={maxRotations}
+                  onChange={async (e) => {
+                    const val = Number(e.target.value);
+                    setMaxRotations(val);
+                    const activeId = userRole === 'superadmin' ? selectedConfigCompanyId : companyId;
+                    if (activeId) await supabase.from('companies').update({ max_rotations_before_manager: val }).eq('id', activeId);
+                  }}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm font-semibold focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all cursor-pointer"
+                >
+                  <option value={1}>🛑 1 Rodízio (Retém rápido)</option>
+                  <option value={2}>🛑 2 Rodízios (Recomendado)</option>
+                  <option value={3}>🛑 3 Rodízios</option>
+                </select>
+                <p className="text-[10px] text-slate-400">Quantidade de falhas de atendimento até reter com o Gestor.</p>
+              </div>
+            </div>
 
             <div className="space-y-2 pt-4 border-t border-slate-100">
               <label className="block text-xs font-bold text-slate-600 uppercase">Logotipo da Empresa</label>
