@@ -447,7 +447,7 @@ export default function App({ session }) {
   const [isUploadingLogo, setIsUploadingLogo] = useState(false);
   const [templateLoadedMsg, setTemplateLoadedMsg] = useState('');
 
-  // 🔄 Rodízio, SLA & Bolsão de Leads (C2S Style)
+  // 🔄 Rodízio, SLA & Bolsão de Leads
   const [rotativaEnabled, setRotativaEnabled] = useState(true);
   const [slaMinutes, setSlaMinutes] = useState(20);
   const [bolsaoMaxMinutes, setBolsaoMaxMinutes] = useState(30);
@@ -3419,7 +3419,7 @@ export default function App({ session }) {
           {/* Card de Configurações de SLA & Rodízio (Estilo C2S) */}
           <div className="bg-white p-8 rounded-xl shadow-sm shadow-indigo-900/5 border border-slate-100 text-left space-y-5">
             <h2 className="text-xl font-black text-slate-800 flex items-center gap-2">
-              🔄 SLA de Atendimento & Rodízio de Leads (Estilo C2S)
+              🔄 SLA de Atendimento & Rodízio de Leads
             </h2>
             <p className="text-sm text-slate-500">
               O gestor pode definir o tempo limite (SLA) para a equipe dar o primeiro atendimento aos novos clientes, além do tempo de Bolsão e retenção.
@@ -3441,7 +3441,7 @@ export default function App({ session }) {
                   <option value={5}>⚡ 5 minutos (Super rápido)</option>
                   <option value={10}>⚡ 10 minutos</option>
                   <option value={15}>⏱️ 15 minutos</option>
-                  <option value={20}>⏱️ 20 minutos (Padrão C2S)</option>
+                  <option value={20}>⏱️ 20 minutos (Recomendado)</option>
                   <option value={30}>⏱️ 30 minutos</option>
                   <option value={60}>⌛ 60 minutos (1 hora)</option>
                 </select>
