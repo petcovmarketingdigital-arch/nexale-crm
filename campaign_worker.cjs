@@ -1066,7 +1066,15 @@ async function processSlaAndBolsaoRedistribution() {
 
           if (inBolsao || retidoGestor || firstTouched) continue;
 
-          const assignedAt = nicho.assigned_at || lead.data_criacao;
+          // 🛑 Apenas leads de captação automática participam do SLA e Bolsão!
+          const autoOrigens = ['Landing Page', 'Link de WhatsApp', 'Captação B2C', 'Captação B2B', 'Retornado do Bolsão'];
+          const isAuto = autoOrigens.some(o => (lead.origem || '').includes(o)) ||
+                         (lead.origem || '').toLowerCase().includes('landing') ||
+                         (lead.origem || '').toLowerCase().includes('whatsapp');
+
+          if (!isAuto) continue;
+
+          const assignedAt = nicho.assigned_at;
           if (!assignedAt) continue;
 
           const assignedDate = new Date(assignedAt);
