@@ -1052,44 +1052,44 @@ async function processSlaAndBolsaoRedistribution() {
       const now = new Date();
 
       // 1. Checa estouro de SLA (atendimento inicial)
-      const { data: leadsToCheck } = await supabase
+      const { data: allCompLeads } = await supabase
         .from('leads')
         .select('*')
-        .eq('company_id', comp.id)
-        .eq('in_bolsao', false)
-        .eq('retido_gestor', false)
-        .is('first_touched_at', null);
+        .eq('company_id', comp.id);
 
-      if (leadsToCheck && leadsToCheck.length > 0) {
-        for (const lead of leadsToCheck) {
-          const assignedAt = lead.assigned_at || lead.dados_nicho?.assigned_at || lead.data_criacao;
+      if (allCompLeads && allCompLeads.length > 0) {
+        for (const lead of allCompLeads) {
+          const nicho = lead.dados_nicho || {};
+          const inBolsao = !!nicho.in_bolsao;
+          const retidoGestor = !!nicho.retido_gestor;
+          const firstTouched = nicho.first_touched_at;
+
+          if (inBolsao || retidoGestor || firstTouched) continue;
+
+          const assignedAt = nicho.assigned_at || lead.data_criacao;
           if (!assignedAt) continue;
+
           const assignedDate = new Date(assignedAt);
           const elapsedMinutes = (now - assignedDate) / (1000 * 60);
 
           if (elapsedMinutes >= slaMin && elapsedMinutes <= (slaMin + 15)) {
-            const nextBolsaoCount = (lead.bolsao_count || lead.dados_nicho?.bolsao_count || 0) + 1;
-            const existingNicho = lead.dados_nicho || {};
+            const currentCount = nicho.bolsao_count || 0;
+            const nextBolsaoCount = currentCount + 1;
 
             if (nextBolsaoCount >= maxRotations) {
-              // 🛑 2º Estouro -> Retido com o Gestor
-              console.log(`🛑 [SLA Worker] Lead ${lead.empresa} (${lead.id}) passou por ${nextBolsaoCount} rodízios sem atendimento. Retido com Gestor!`);
-              const updatedNicho = { ...existingNicho, retido_gestor: true, in_bolsao: false, bolsao_count: nextBolsaoCount };
+              console.log(`🛑 [SLA Worker] Lead ${lead.empresa} (${lead.id}) retido pelo Gestor!`);
+              const updatedNicho = { ...nicho, retido_gestor: true, in_bolsao: false, bolsao_count: nextBolsaoCount };
               await supabase.from('leads').update({
-                retido_gestor: true,
-                in_bolsao: false,
-                bolsao_count: nextBolsaoCount,
                 origem: 'Retido pelo Gestor',
+                bolsao_entered_at: null,
                 dados_nicho: updatedNicho
               }).eq('id', lead.id);
             } else {
-              // 💼 1º Estouro -> Vai para o Bolsão
               console.log(`💼 [SLA Worker] Lead ${lead.empresa} (${lead.id}) estourou SLA de ${slaMin} min. Enviando para Bolsão!`);
-              const enteredAt = lead.bolsao_entered_at || existingNicho.bolsao_entered_at || now.toISOString();
-              const updatedNicho = { ...existingNicho, in_bolsao: true, bolsao_entered_at: enteredAt, bolsao_count: nextBolsaoCount };
+              const enteredAt = lead.bolsao_entered_at || nicho.bolsao_entered_at || now.toISOString();
+              const updatedNicho = { ...nicho, in_bolsao: true, bolsao_entered_at: enteredAt, bolsao_count: nextBolsaoCount };
               await supabase.from('leads').update({
-                in_bolsao: true,
-                bolsao_count: nextBolsaoCount,
+                bolsao_entered_at: enteredAt,
                 dados_nicho: updatedNicho
               }).eq('id', lead.id);
             }
@@ -1098,42 +1098,43 @@ async function processSlaAndBolsaoRedistribution() {
       }
 
       // 2. Checa estouro de tempo do Bolsão (Redistribuição Automática)
-      const { data: bolsaoLeads } = await supabase
-        .from('leads')
-        .select('*')
-        .eq('company_id', comp.id)
-        .or('in_bolsao.eq.true,dados_nicho->>in_bolsao.eq.true');
+      if (allCompLeads && allCompLeads.length > 0) {
+        const bolsaoLeads = allCompLeads.filter(l => {
+          const n = l.dados_nicho || {};
+          return n.in_bolsao;
+        });
 
-      if (bolsaoLeads && bolsaoLeads.length > 0) {
-        const { data: teamRoles } = await supabase.from('user_roles').select('*').eq('company_id', comp.id);
-        const activeSellers = (teamRoles || []).map(r => r.id);
+        if (bolsaoLeads.length > 0) {
+          const { data: teamRoles } = await supabase.from('user_roles').select('*').eq('company_id', comp.id);
+          const activeSellers = (teamRoles || []).map(r => r.id);
 
-        for (const bLead of bolsaoLeads) {
-          const bolsaoEntered = bLead.bolsao_entered_at || bLead.dados_nicho?.bolsao_entered_at;
-          if (bolsaoEntered) {
-            const enteredDate = new Date(bolsaoEntered);
-            const inBolsaoMinutes = (now - enteredDate) / (1000 * 60);
+          for (const bLead of bolsaoLeads) {
+            const n = bLead.dados_nicho || {};
+            const bolsaoEntered = bLead.bolsao_entered_at || n.bolsao_entered_at;
 
-            if (inBolsaoMinutes >= bolsaoMaxMin && activeSellers.length > 0) {
-              // Rodízio circular para o próximo vendedor
-              const currIdx = activeSellers.indexOf(bLead.user_id);
-              const nextIdx = (currIdx + 1) % activeSellers.length;
-              const nextSellerId = activeSellers[nextIdx];
+            if (bolsaoEntered) {
+              const enteredDate = new Date(bolsaoEntered);
+              const inBolsaoMinutes = (now - enteredDate) / (1000 * 60);
 
-              console.log(`🔄 [SLA Worker] Lead ${bLead.empresa} (${bLead.id}) expirou ${bolsaoMaxMin} min no Bolsão. Redistribuindo para vendedor ${nextSellerId}!`);
-              const updatedNicho = {
-                ...(bLead.dados_nicho || {}),
-                in_bolsao: false,
-                bolsao_entered_at: null,
-                assigned_at: now.toISOString()
-              };
-              await supabase.from('leads').update({
-                user_id: nextSellerId,
-                in_bolsao: false,
-                first_touched_at: null,
-                origem: 'Retornado do Bolsão',
-                dados_nicho: updatedNicho
-              }).eq('id', bLead.id);
+              if (inBolsaoMinutes >= bolsaoMaxMin && activeSellers.length > 0) {
+                const currIdx = activeSellers.indexOf(bLead.user_id);
+                const nextIdx = (currIdx + 1) % activeSellers.length;
+                const nextSellerId = activeSellers[nextIdx];
+
+                console.log(`🔄 [SLA Worker] Lead ${bLead.empresa} (${bLead.id}) expirou ${bolsaoMaxMin} min no Bolsão. Redistribuindo para vendedor ${nextSellerId}!`);
+                const updatedNicho = {
+                  ...n,
+                  in_bolsao: false,
+                  bolsao_entered_at: null,
+                  assigned_at: now.toISOString()
+                };
+                await supabase.from('leads').update({
+                  user_id: nextSellerId,
+                  origem: 'Retornado do Bolsão',
+                  bolsao_entered_at: null,
+                  dados_nicho: updatedNicho
+                }).eq('id', bLead.id);
+              }
             }
           }
         }

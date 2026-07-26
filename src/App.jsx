@@ -509,19 +509,17 @@ export default function App({ session }) {
         bolsao_count: nextCount
       };
 
-      const updatePayload = shouldRetain ? {
-        retido_gestor: true,
-        in_bolsao: false,
-        bolsao_count: nextCount,
-        origem: 'Retido pelo Gestor',
-        dados_nicho: updatedNicho
-      } : {
-        in_bolsao: true,
+      const dbPayload = {
         dados_nicho: updatedNicho,
-        bolsao_count: nextCount
+        bolsao_entered_at: shouldRetain ? null : enteredAt,
+        origem: shouldRetain ? 'Retido pelo Gestor' : (card.origem || 'Captação')
       };
 
-      await supabase.from('leads').update(updatePayload).eq('id', cardId);
+      const { error } = await supabase.from('leads').update(dbPayload).eq('id', cardId);
+      if (error) {
+        console.error('❌ Error updating lead in Supabase:', error);
+        return;
+      }
 
       setColumns(prevCols => prevCols.map(col => ({
         ...col,
