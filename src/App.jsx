@@ -922,7 +922,25 @@ export default function App({ session }) {
           if (error) throw error;
         } else {
           // NOVO LEAD (MULTI-TENANT)
-          const isAtribuidoOutro = formData.user_id && formData.user_id !== session.user.id;
+          let assignedUserId = formData.user_id;
+          if (!assignedUserId && (userRole === 'admin' || userRole === 'superadmin') && companyId) {
+            const { data: sellers } = await supabase
+              .from('user_roles')
+              .select('id')
+              .eq('company_id', companyId)
+              .eq('role', 'vendedor');
+
+            if (sellers && sellers.length > 0) {
+              const { data: comp } = await supabase.from('companies').select('last_seller_index').eq('id', companyId).single();
+              const currIdx = comp?.last_seller_index || 0;
+              const nextIdx = currIdx % sellers.length;
+              assignedUserId = sellers[nextIdx].id;
+              await supabase.from('companies').update({ last_seller_index: currIdx + 1 }).eq('id', companyId);
+            }
+          }
+          if (!assignedUserId) assignedUserId = session.user.id;
+
+          const isAtribuidoOutro = assignedUserId && assignedUserId !== session.user.id;
           const origemPadrao = isAtribuidoOutro 
             ? (companyNiche === 'imobiliaria' ? 'Enviado pela Imobiliária' : 'Enviado pela Empresa')
             : (userRole === 'vendedor' 
@@ -930,7 +948,7 @@ export default function App({ session }) {
                 : 'Novo Lead');
 
           const { data, error } = await supabase.from('leads').insert([{
-            user_id: formData.user_id || session.user.id,
+            user_id: assignedUserId,
             company_id: companyId, // VINCULA À EMPRESA CORRETA
             empresa: formData.empresa,
             contato: formData.contato,
