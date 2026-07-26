@@ -1957,12 +1957,31 @@ export default function App({ session }) {
         </div>
       )}
 
+      {/* MARCA D'ÁGUA DA EMPRESA DO ASSINANTE NO PLANO DE FUNDO */}
+      {companyLogoUrl && (
+        <div 
+          className="fixed inset-0 pointer-events-none z-0 flex items-center justify-center overflow-hidden transition-all duration-700 select-none"
+          style={{ opacity: 0.05 }}
+        >
+          <img 
+            src={companyLogoUrl} 
+            alt="Marca D'água" 
+            className="max-w-[45vw] max-h-[45vh] object-contain filter grayscale contrast-125 select-none pointer-events-none" 
+          />
+        </div>
+      )}
+
       {/* HEADER COMPLETO */}
-      <div className="flex flex-col xl:flex-row justify-between items-start xl:items-center mb-8 gap-4 bg-white p-4 rounded-xl shadow-sm shadow-indigo-900/5 border border-slate-100">
+      <div className="relative z-10 flex flex-col xl:flex-row justify-between items-start xl:items-center mb-8 gap-4 bg-white/90 backdrop-blur-md p-4 rounded-xl shadow-sm shadow-indigo-900/5 border border-slate-100">
         <div>
           <h1 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
             <img src="/logo-nexale.jpg" alt="Nexale Logo" className="h-8 w-8 rounded-lg object-cover shadow-sm border border-slate-100" />
-            Nexale CRM
+            <span>Nexale CRM</span>
+            {companyLogoUrl && (
+              <span className="flex items-center gap-2 border-l-2 border-slate-200 pl-3 ml-1 animate-fade-in" title="Empresa Assinante">
+                <img src={companyLogoUrl} alt="Logo Empresa" className="h-7 max-w-[130px] object-contain rounded-md" />
+              </span>
+            )}
           </h1>
 
           <p className="text-sm text-slate-500 mt-1 flex items-center gap-2">
@@ -3713,7 +3732,7 @@ export default function App({ session }) {
               </div>
 
               <p className="text-[10px] text-slate-400">
-                Selecione uma imagem (PNG, JPG, SVG) com até 3MB. Ela aparecerá no topo da sua Landing Page de captação.
+                Selecione uma imagem (PNG, JPG, SVG) com até 3MB. O logotipo da sua empresa aparecerá no cabeçalho do CRM, como marca d'água no plano de fundo e no topo da sua Landing Page de captação.
               </p>
             </div>
 
