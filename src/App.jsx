@@ -1634,11 +1634,21 @@ export default function App({ session }) {
     setDraggedCard(null);
 
     // Salva no banco
+    const nowIso = new Date().toISOString();
+    const existingNicho = card.dados_nicho || {};
+    const firstTouchTime = card.first_touched_at || existingNicho.first_touched_at || nowIso;
+    const updatedNicho = {
+      ...existingNicho,
+      first_touched_at: firstTouchTime,
+      in_bolsao: false,
+      bolsao_entered_at: null
+    };
+
     const updateData = { 
       coluna_id: targetColId, 
-      data_movimentacao: new Date().toISOString(),
-      first_touched_at: card.first_touched_at || new Date().toISOString(),
-      in_bolsao: false
+      data_movimentacao: nowIso,
+      bolsao_entered_at: null,
+      dados_nicho: updatedNicho
     };
     if (reason) updateData.motivo_perda = reason;
     if (targetColId !== 'leads') {
@@ -1730,16 +1740,16 @@ export default function App({ session }) {
       const updatedNicho = {
         ...existingNicho,
         in_bolsao: false,
+        retido_gestor: false,
         bolsao_entered_at: null,
+        first_touched_at: nowIso,
         assigned_at: nowIso
       };
 
       const { error } = await supabase.from('leads').update({
         user_id: session.user.id,
-        in_bolsao: false,
-        retido_gestor: false,
-        first_touched_at: null,
         origem: 'Resgatado do Bolsão',
+        bolsao_entered_at: null,
         dados_nicho: updatedNicho
       }).eq('id', leadId);
 
