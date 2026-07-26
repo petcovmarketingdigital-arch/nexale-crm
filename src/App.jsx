@@ -626,7 +626,12 @@ export default function App({ session }) {
       });
 
       data.forEach(dbLead => {
-          const isAutoCapture = dbLead.origem === 'Landing Page' || dbLead.origem === 'Link de WhatsApp' || dbLead.origem === 'Captação B2B' || (dbLead.origem && dbLead.origem.includes('Enviado'));
+          const isAutoCapture = dbLead.origem === 'Landing Page' || 
+                                dbLead.origem === 'Link de WhatsApp' || 
+                                dbLead.origem === 'Captação B2C' || 
+                                dbLead.origem === 'Captação B2B' || 
+                                (dbLead.origem && dbLead.origem.toLowerCase().includes('landing')) ||
+                                (dbLead.origem && dbLead.origem.includes('Enviado'));
 
           const lead = {
             id: dbLead.id,
@@ -646,7 +651,7 @@ export default function App({ session }) {
             ai_paused: !!dbLead.ai_paused,
             dados_nicho: dbLead.dados_nicho || {},
             user_id: dbLead.user_id,
-            assigned_at: dbLead.assigned_at || null,
+            assigned_at: dbLead.assigned_at || (isAutoCapture ? dbLead.data_criacao : null),
             first_touched_at: dbLead.first_touched_at || null,
             in_bolsao: !!dbLead.in_bolsao,
             bolsao_entered_at: dbLead.bolsao_entered_at || null,
