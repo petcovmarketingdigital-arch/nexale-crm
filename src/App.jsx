@@ -948,7 +948,6 @@ export default function App({ session }) {
                 : 'Novo Lead');
 
           const existingNicho = formData.dados_nicho || {};
-          const nowIso = new Date().toISOString();
           const { data, error } = await supabase.from('leads').insert([{
             user_id: assignedUserId,
             company_id: companyId, // VINCULA À EMPRESA CORRETA
@@ -965,7 +964,7 @@ export default function App({ session }) {
             data_retorno: formData.dataRetorno || null,
             notas: formData.notas,
             origem: origemPadrao,
-            dados_nicho: { ...existingNicho, assigned_at: nowIso }
+            dados_nicho: existingNicho
           }]).select();
           
           if (error) throw error;
@@ -1713,6 +1712,16 @@ export default function App({ session }) {
     if (card.retido_gestor) return { type: 'retido', label: '🛑 Retido pelo Gestor (2 Rodízios)' };
     if (card.in_bolsao) return { type: 'bolsao', label: '💼 No Bolsão (Aguardando Resgate)' };
     if (card.first_touched_at) return { type: 'ok', label: '✅ 1º Atendimento Realizado' };
+
+    // 🛑 LEADS MANUAIS E CAPTAÇÃO PRÓPRIA NÃO ABREM CONTAGEM DE SLA!
+    const isAutoCapture = card.origem === 'Landing Page' || 
+                          card.origem === 'Link de WhatsApp' || 
+                          card.origem === 'Captação B2C' || 
+                          card.origem === 'Captação B2B' || 
+                          (card.origem && card.origem.toLowerCase().includes('landing')) ||
+                          (card.origem && card.origem.includes('Enviado'));
+
+    if (!isAutoCapture) return { type: 'normal', label: null };
     if (!card.assigned_at) return { type: 'normal', label: null };
     
     const assignedTime = new Date(card.assigned_at).getTime();
