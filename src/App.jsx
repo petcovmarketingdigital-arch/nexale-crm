@@ -494,15 +494,30 @@ export default function App({ session }) {
 
       const nextCount = (card.bolsao_count || 0) + 1;
       const shouldRetain = forceRetido || nextCount >= (maxRotations || 2);
+      const enteredAt = card.bolsao_entered_at || card.dados_nicho?.bolsao_entered_at || nowIso;
+
+      const existingNicho = card.dados_nicho || {};
+      const updatedNicho = shouldRetain ? {
+        ...existingNicho,
+        retido_gestor: true,
+        in_bolsao: false,
+        bolsao_count: nextCount
+      } : {
+        ...existingNicho,
+        in_bolsao: true,
+        bolsao_entered_at: enteredAt,
+        bolsao_count: nextCount
+      };
 
       const updatePayload = shouldRetain ? {
         retido_gestor: true,
         in_bolsao: false,
         bolsao_count: nextCount,
-        origem: 'Retido pelo Gestor'
+        origem: 'Retido pelo Gestor',
+        dados_nicho: updatedNicho
       } : {
         in_bolsao: true,
-        bolsao_entered_at: nowIso,  // ✅ Coluna real no banco
+        dados_nicho: updatedNicho,
         bolsao_count: nextCount
       };
 
@@ -510,10 +525,59 @@ export default function App({ session }) {
 
       setColumns(prevCols => prevCols.map(col => ({
         ...col,
-        cards: col.cards.map(c => c.id === cardId ? { ...c, ...updatePayload } : c)
+        cards: col.cards.map(c => c.id === cardId ? {
+          ...c,
+          in_bolsao: !shouldRetain,
+          retido_gestor: shouldRetain,
+          bolsao_entered_at: enteredAt,
+          bolsao_count: nextCount,
+          dados_nicho: updatedNicho
+        } : c)
       })));
     } catch (e) {
       console.error('Erro ao mover lead para bolsão:', e.message);
+    }
+  };
+
+  const handleClaimBolsaoLead = async (cardId) => {
+    try {
+      const nowIso = new Date().toISOString();
+      const card = columns.flatMap(col => col.cards).find(c => c.id === cardId);
+      if (!card) return;
+
+      const existingNicho = card.dados_nicho || {};
+      const updatedNicho = {
+        ...existingNicho,
+        in_bolsao: false,
+        bolsao_entered_at: null,
+        assigned_at: nowIso
+      };
+
+      const updatePayload = {
+        user_id: session.user.id,
+        in_bolsao: false,
+        origem: 'Resgatado do Bolsão',
+        dados_nicho: updatedNicho
+      };
+
+      await supabase.from('leads').update(updatePayload).eq('id', cardId);
+
+      setColumns(prevCols => prevCols.map(col => ({
+        ...col,
+        cards: col.cards.map(c => c.id === cardId ? {
+          ...c,
+          user_id: session.user.id,
+          in_bolsao: false,
+          bolsao_entered_at: null,
+          assigned_at: nowIso,
+          first_touched_at: null,
+          origem: 'Resgatado do Bolsão',
+          dados_nicho: updatedNicho
+        } : c)
+      })));
+      setShowBolsaoModal(false);
+    } catch (e) {
+      console.error('Erro ao resgatar lead:', e.message);
     }
   };
 
@@ -735,10 +799,10 @@ export default function App({ session }) {
             user_id: dbLead.user_id,
             assigned_at: dbLead.assigned_at || dbLead.dados_nicho?.assigned_at || (isAutoCapture ? dbLead.data_criacao : null),
             first_touched_at: dbLead.first_touched_at || null,
-            in_bolsao: !!dbLead.in_bolsao,
-            bolsao_entered_at: dbLead.bolsao_entered_at || null,
-            bolsao_count: Number(dbLead.bolsao_count) || 0,
-            retido_gestor: !!dbLead.retido_gestor
+            in_bolsao: !!dbLead.in_bolsao || !!dbLead.dados_nicho?.in_bolsao,
+            bolsao_entered_at: dbLead.bolsao_entered_at || dbLead.dados_nicho?.bolsao_entered_at || null,
+            bolsao_count: Number(dbLead.bolsao_count || dbLead.dados_nicho?.bolsao_count) || 0,
+            retido_gestor: !!dbLead.retido_gestor || !!dbLead.dados_nicho?.retido_gestor
           };
         const targetCol = cols.find(c => c.id === dbLead.coluna_id) || cols[0];
         targetCol.cards.push(lead);
