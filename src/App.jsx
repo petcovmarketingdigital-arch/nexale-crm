@@ -1617,6 +1617,7 @@ export default function App({ session }) {
 
   const handleMoveMobile = (card, sourceColId, targetColId) => {
     if (!targetColId) return;
+    setActiveMobileCol(targetColId);
     if (targetColId === 'perdido') {
       setLossModal({ card, sourceColId, targetColId });
       return;
@@ -2567,35 +2568,40 @@ export default function App({ session }) {
           </div>
 
           {/* Seletor de Abas Móvel para o Kanban */}
-          <div className="flex md:hidden overflow-x-auto gap-2 pb-3 mb-4 scrollbar-none justify-start px-1 border-b border-slate-100">
-            {columns.map((column) => {
-              const isActive = activeMobileCol === column.id;
-              const count = column.cards.length;
-              
-              let badgeBg = isActive ? 'bg-indigo-500 text-white' : 'bg-slate-100 text-slate-500';
-              if (column.id === 'ganhou') badgeBg = isActive ? 'bg-green-500 text-white' : 'bg-green-50 text-green-700';
-              if (column.id === 'perdido') badgeBg = isActive ? 'bg-red-500 text-white' : 'bg-red-50 text-red-700';
+          <div className="md:hidden mb-4">
+            <div className="flex items-center justify-between mb-1.5 px-1">
+              <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider">📱 Etapas do Funil (Toque para alternar):</span>
+            </div>
+            <div className="flex overflow-x-auto gap-2 pb-2 scrollbar-none justify-start px-1 border-b border-slate-100">
+              {columns.map((column) => {
+                const isActive = activeMobileCol === column.id;
+                const count = column.cards.filter(c => !c.in_bolsao).length;
+                
+                let badgeBg = isActive ? 'bg-indigo-500 text-white' : 'bg-slate-100 text-slate-500';
+                if (column.id === 'ganhou') badgeBg = isActive ? 'bg-green-500 text-white' : 'bg-green-50 text-green-700';
+                if (column.id === 'perdido') badgeBg = isActive ? 'bg-red-500 text-white' : 'bg-red-50 text-red-700';
 
-              return (
-                <button
-                  key={column.id}
-                  onClick={() => setActiveMobileCol(column.id)}
-                  className={`flex-shrink-0 px-3.5 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all flex items-center gap-1.5 border cursor-pointer ${
-                    isActive 
-                      ? (column.id === 'ganhou' ? 'bg-green-600 border-green-600 text-white shadow-md shadow-green-600/10' :
-                         column.id === 'perdido' ? 'bg-red-600 border-red-600 text-white shadow-md shadow-red-600/10' :
-                         'bg-indigo-600 border-indigo-600 text-white shadow-md shadow-indigo-600/10')
-                      : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300'
-                  }`}
-                >
-                  {column.id === 'ganhou' ? '🏆 ' : column.id === 'perdido' ? '💔 ' : ''}
-                  {column.title.split(' ')[0]}
-                  <span className={`px-1.5 py-0.5 rounded-full text-[9px] font-bold ${badgeBg}`}>
-                    {count}
-                  </span>
-                </button>
-              );
-            })}
+                return (
+                  <button
+                    key={column.id}
+                    onClick={() => setActiveMobileCol(column.id)}
+                    className={`flex-shrink-0 px-3.5 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all flex items-center gap-1.5 border cursor-pointer ${
+                      isActive 
+                        ? (column.id === 'ganhou' ? 'bg-green-600 border-green-600 text-white shadow-md shadow-green-600/10' :
+                           column.id === 'perdido' ? 'bg-red-600 border-red-600 text-white shadow-md shadow-red-600/10' :
+                           'bg-indigo-600 border-indigo-600 text-white shadow-md shadow-indigo-600/10')
+                        : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300'
+                    }`}
+                  >
+                    {column.id === 'ganhou' ? '🏆 ' : column.id === 'perdido' ? '💔 ' : ''}
+                    {column.title.split(' ')[0]}
+                    <span className={`px-1.5 py-0.5 rounded-full text-[9px] font-bold ${badgeBg}`}>
+                      {count}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
           </div>
 
           {/* Banner do Bolsão no Topo do Kanban */}
@@ -2863,21 +2869,43 @@ export default function App({ session }) {
                             <span className="text-[13px] font-black text-slate-800">R$ {Number(card.valor).toLocaleString('pt-BR')}</span>
                           </div>
 
-                          <div className="flex justify-between items-center mt-4 pt-3 border-t border-slate-100 md:hidden">
-                             <button 
-                               onClick={() => handleMoveMobile(card, column.id, columns[colIndex - 1]?.id)}
-                               disabled={colIndex === 0}
-                               className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-lg text-xs font-bold disabled:opacity-30 transition-colors"
-                             >
-                               ← Voltar
-                             </button>
-                             <button 
-                               onClick={() => handleMoveMobile(card, column.id, columns[colIndex + 1]?.id)}
-                               disabled={colIndex === columns.length - 1}
-                               className="px-3 py-1.5 bg-indigo-100 hover:bg-indigo-200 text-indigo-700 rounded-lg text-xs font-bold disabled:opacity-30 transition-colors"
-                             >
-                               Avançar →
-                             </button>
+                          <div className="flex flex-col gap-2 mt-4 pt-3 border-t border-slate-100 md:hidden">
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="text-[10px] font-bold text-slate-500 uppercase">Mover Etapa:</span>
+                              <select
+                                value={column.id}
+                                onChange={(e) => {
+                                  const targetId = e.target.value;
+                                  if (targetId && targetId !== column.id) {
+                                    handleMoveMobile(card, column.id, targetId);
+                                  }
+                                }}
+                                className="text-xs font-bold bg-indigo-50 text-indigo-700 border border-indigo-200 rounded-lg px-2.5 py-1.5 focus:outline-none cursor-pointer flex-1 text-right"
+                              >
+                                {columns.map(col => (
+                                  <option key={col.id} value={col.id} disabled={col.id === column.id}>
+                                    {col.id === column.id ? `✓ ${col.title}` : `➡️ ${col.title}`}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+
+                            <div className="flex justify-between items-center gap-2">
+                              <button 
+                                onClick={() => handleMoveMobile(card, column.id, columns[colIndex - 1]?.id)}
+                                disabled={colIndex === 0}
+                                className="flex-1 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-lg text-xs font-bold disabled:opacity-30 transition-colors"
+                              >
+                                ← Voltar
+                              </button>
+                              <button 
+                                onClick={() => handleMoveMobile(card, column.id, columns[colIndex + 1]?.id)}
+                                disabled={colIndex === columns.length - 1}
+                                className="flex-1 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold disabled:opacity-30 transition-colors shadow-sm"
+                              >
+                                Avançar →
+                              </button>
+                            </div>
                           </div>
                         </div>
                       )
