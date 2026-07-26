@@ -716,9 +716,9 @@ export default function App({ session }) {
       // ISOLAMENTO MULTI-TENANT: Apenas leads desta empresa
       query = query.eq('company_id', compId);
 
-      // ISOLAMENTO DE VENDEDOR
+      // ISOLAMENTO DE VENDEDOR (Vendedor enxerga seus próprios leads + Leads no Bolsão para resgate)
       if (role === 'vendedor') {
-        query = query.eq('user_id', session.user.id);
+        query = query.or(`user_id.eq.${session.user.id},bolsao_entered_at.not.is.null`);
       } else if (role === 'admin' && filterUserId !== 'all') {
         query = query.eq('user_id', filterUserId);
       }
