@@ -549,21 +549,49 @@ app.post('/webhook/:companyId', async (req, res) => {
         return;
       }
 
-      const { data: adminRole, error: roleErr } = await supabaseAdmin
+      // 🔄 Rodízio Automático: busca vendedores em fila circular
+      let assignedUserId = null;
+      const { data: compInfo } = await supabaseAdmin
+        .from('companies')
+        .select('last_seller_index')
+        .eq('id', companyId)
+        .single();
+
+      const { data: sellersData } = await supabaseAdmin
         .from('user_roles')
         .select('id')
         .eq('company_id', companyId)
-        .limit(1)
-        .single();
-      
-      console.log(`AdminRole fetch error: ${roleErr?.message}`);
-      const userId = adminRole ? adminRole.id : null;
-      console.log(`UserId defined as: ${userId}`);
+        .eq('role', 'vendedor')
+        .order('created_at', { ascending: true });
 
+      const sellers = sellersData && sellersData.length > 0 ? sellersData : null;
+
+      if (sellers && sellers.length > 0) {
+        const currentIndex = compInfo?.last_seller_index || 0;
+        const nextIndex = currentIndex % sellers.length;
+        assignedUserId = sellers[nextIndex].id;
+        // Incrementa o índice para o próximo lead
+        await supabaseAdmin
+          .from('companies')
+          .update({ last_seller_index: nextIndex + 1 })
+          .eq('id', companyId);
+      } else {
+        // Fallback: busca qualquer usuário da empresa (admin)
+        const { data: anyRole } = await supabaseAdmin
+          .from('user_roles')
+          .select('id')
+          .eq('company_id', companyId)
+          .limit(1)
+          .single();
+        assignedUserId = anyRole ? anyRole.id : null;
+      }
+
+      const nowIso = new Date().toISOString();
+      console.log(`🔄 Lead atribuído ao vendedor ${assignedUserId} (rodízio)`);
       console.log('Tentando inserir lead...');
       const { data: insertRes, error: insertErr } = await supabaseAdmin.from('leads').insert([{
         company_id: companyId,
-        user_id: userId,
+        user_id: assignedUserId,
         empresa: pushName,
         contato: pushName,
         telefone: phone,
@@ -573,7 +601,8 @@ app.post('/webhook/:companyId', async (req, res) => {
         metragem: 'Captado automaticamente pelo WhatsApp',
         valor: 0,
         kits: 0,
-        origem: 'Link de WhatsApp'
+        origem: 'Link de WhatsApp',
+        assigned_at: nowIso,  // ⏱️ Inicia o SLA timer
       }]).select('id');
 
       if (insertErr) {
@@ -996,7 +1025,7 @@ async function processSlaAndBolsaoRedistribution() {
             const inBolsaoMinutes = (now - enteredDate) / (1000 * 60);
 
             if (inBolsaoMinutes >= bolsaoMaxMin && activeSellers.length > 0) {
-              // Seleciona próximo vendedor em rodízio
+              // Rodízio circular para o próximo vendedor
               const currIdx = activeSellers.indexOf(bLead.user_id);
               const nextIdx = (currIdx + 1) % activeSellers.length;
               const nextSellerId = activeSellers[nextIdx];
@@ -1005,8 +1034,10 @@ async function processSlaAndBolsaoRedistribution() {
               await supabase.from('leads').update({
                 user_id: nextSellerId,
                 in_bolsao: false,
-                assigned_at: now.toISOString(),
-                origem: 'Resgatado do Bolsão'
+                bolsao_entered_at: null,
+                assigned_at: now.toISOString(),  // ⏱️ Reinicia SLA timer do zero
+                first_touched_at: null,            // Permite nova janela de atendimento
+                origem: 'Retornado do Bolsão',
               }).eq('id', bLead.id);
             }
           }

@@ -472,7 +472,7 @@ export default function App({ session }) {
         origem: 'Retido pelo Gestor'
       } : {
         in_bolsao: true,
-        bolsao_entered_at: nowIso,
+        bolsao_entered_at: nowIso,  // ✅ Coluna real no banco
         bolsao_count: nextCount
       };
 
