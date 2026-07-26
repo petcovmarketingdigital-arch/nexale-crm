@@ -1957,29 +1957,17 @@ export default function App({ session }) {
         </div>
       )}
 
-      {/* LOGO DA EMPRESA DO ASSINANTE NO PLANO DE FUNDO (COLORIDO E SOMBREADO) */}
-      {companyLogoUrl && (
-        <div 
-          className="fixed inset-0 pointer-events-none z-0 flex items-center justify-center overflow-hidden transition-all duration-700 select-none"
-          style={{ opacity: 0.12 }}
-        >
-          <img 
-            src={companyLogoUrl} 
-            alt="Logo Fundo" 
-            className="max-w-[42vw] max-h-[42vh] object-contain drop-shadow-[0_25px_35px_rgba(0,0,0,0.18)] select-none pointer-events-none transform scale-105" 
-          />
-        </div>
-      )}
-
       {/* HEADER COMPLETO */}
-      <div className="relative z-10 flex flex-col xl:flex-row justify-between items-start xl:items-center mb-8 gap-4 bg-white/90 backdrop-blur-md p-4 rounded-xl shadow-sm shadow-indigo-900/5 border border-slate-100">
+      <div className="flex flex-col xl:flex-row justify-between items-start xl:items-center mb-8 gap-4 bg-white p-4 rounded-xl shadow-sm shadow-indigo-900/5 border border-slate-100">
         <div>
           <h1 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
             <img src="/logo-nexale.jpg" alt="Nexale Logo" className="h-8 w-8 rounded-lg object-cover shadow-sm border border-slate-100" />
             <span>Nexale CRM</span>
             {companyLogoUrl && (
-              <span className="flex items-center gap-2 border-l-2 border-slate-200 pl-3 ml-1 animate-fade-in" title="Empresa Assinante">
-                <img src={companyLogoUrl} alt="Logo Empresa" className="h-7 max-w-[130px] object-contain rounded-md" />
+              <span className="flex items-center gap-2 border-l border-slate-200 pl-3 ml-1 animate-fade-in" title="Empresa Assinante">
+                <span className="bg-slate-50 border border-slate-200 px-2.5 py-1 rounded-lg flex items-center gap-1.5">
+                  <img src={companyLogoUrl} alt="Logo Empresa" className="h-6 max-w-[120px] object-contain rounded" />
+                </span>
               </span>
             )}
           </h1>
