@@ -208,7 +208,7 @@ export default function CaptacaoPage({ vendedorId }) {
   const config = NICHOS_CONFIG[nicho] || NICHOS_CONFIG.geral;
   const tema = config.tema;
 
-  // Envio do formulário
+  // Envio do formulário com rodízio automático de vendedores
   async function handleSubmit(e) {
     e.preventDefault();
     setFormError('');
@@ -218,19 +218,51 @@ export default function CaptacaoPage({ vendedorId }) {
     setSubmitting(true);
     try {
       const rawPhone = telefone.replace(/\D/g, '');
+      const companyId = empresa?.id || null;
+      const nowIso = new Date().toISOString();
+
+      // 🎯 Atribuição Inteligente de Lead:
+      // Se o link pertence a um vendedor individual, o lead vai 100% DIRETO para ele (Captação Própria).
+      // Se for o link geral da empresa/gestor, roda no rodízio automático (Fila C2S).
+      let assignedUserId = vendedorId || null;
+      let origemLead = 'Landing Page';
+
+      if (vendedor && vendedor.role === 'vendedor') {
+        assignedUserId = vendedor.id;
+        origemLead = 'Captação Própria';
+      } else if (companyId) {
+        const { data: sellers } = await supabase
+          .from('user_roles')
+          .select('id, role')
+          .eq('company_id', companyId)
+          .eq('role', 'vendedor');
+
+        const sellerList = sellers && sellers.length > 0 ? sellers : null;
+
+        if (sellerList && sellerList.length > 0) {
+          const currentIndex = empresa?.last_seller_index || 0;
+          const nextIndex = currentIndex % sellerList.length;
+          assignedUserId = sellerList[nextIndex].id;
+
+          await supabase
+            .from('companies')
+            .update({ last_seller_index: nextIndex + 1 })
+            .eq('id', companyId);
+        }
+      }
+
       const { error } = await supabase.from('leads').insert({
-        company_id: empresa?.id || null,
-        user_id: vendedorId || null,
+        company_id: companyId,
+        user_id: assignedUserId,
         contato: nome.trim(),
         telefone: rawPhone,
         empresa: nome.trim(),
         tipo: 'B2C',
         coluna_id: 'leads',
-        origem: 'Landing Page',
+        origem: origemLead,
         status_amostra: 'Morno',
-        dados_nicho: nichoFields,
+        dados_nicho: { ...nichoFields, assigned_at: nowIso },  // SLA stored in dados_nicho
       });
-
 
       if (error) throw error;
       setSubmitted(true);

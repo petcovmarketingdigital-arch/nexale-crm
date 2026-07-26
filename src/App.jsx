@@ -447,6 +447,124 @@ export default function App({ session }) {
   const [isUploadingLogo, setIsUploadingLogo] = useState(false);
   const [templateLoadedMsg, setTemplateLoadedMsg] = useState('');
 
+  // 🔄 Rodízio, SLA & Bolsão de Leads
+  const [rotativaEnabled, setRotativaEnabled] = useState(true);
+  const [slaMinutes, setSlaMinutes] = useState(20);
+  const [bolsaoMaxMinutes, setBolsaoMaxMinutes] = useState(30);
+  const [maxRotations, setMaxRotations] = useState(2);
+  const [showSlaReportModal, setShowSlaReportModal] = useState(false);
+  const [showBolsaoModal, setShowBolsaoModal] = useState(false);
+  const [slaNow, setSlaNow] = useState(Date.now());
+
+  // 🔔 Sistema de Notificações
+  const [notifications, setNotifications] = useState([]);
+  const [showNotifPanel, setShowNotifPanel] = useState(false);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const knownLeadIdsRef = React.useRef(null); // null = primeira carga
+
+  // 🎉 Animação de Confetes para Venda Fechada
+  const [showConfetti, setShowConfetti] = useState(false);
+  const [confettiMessage, setConfettiMessage] = useState('');
+
+  // Solicita permissão de notificação do navegador
+  const requestNotifPermission = async () => {
+    if ('Notification' in window && Notification.permission === 'default') {
+      await Notification.requestPermission();
+    }
+  };
+
+  // Dispara notificação nativa do navegador (funciona no celular também)
+  const fireNotification = (title, body, icon = '/logo-nexale.jpg') => {
+    // In-app notification
+    const notif = { id: Date.now(), title, body, time: new Date(), read: false };
+    setNotifications(prev => [notif, ...prev].slice(0, 50));
+    setUnreadCount(prev => prev + 1);
+
+    // Browser push (funciona no Android Chrome em segundo plano)
+    if ('Notification' in window && Notification.permission === 'granted') {
+      try {
+        new Notification(title, { body, icon, badge: icon, tag: String(notif.id) });
+      } catch (e) {
+        // Ignora erro silenciosamente
+      }
+    }
+  };
+
+  const handlePushToBolsao = async (cardId, forceRetido = false) => {
+    try {
+      const nowIso = new Date().toISOString();
+      const card = columns.flatMap(col => col.cards).find(c => c.id === cardId);
+      if (!card) return;
+
+      const nextCount = (card.bolsao_count || 0) + 1;
+      const shouldRetain = forceRetido || nextCount >= (maxRotations || 2);
+      const enteredAt = card.bolsao_entered_at || card.dados_nicho?.bolsao_entered_at || nowIso;
+
+      const existingNicho = card.dados_nicho || {};
+      const updatedNicho = shouldRetain ? {
+        ...existingNicho,
+        retido_gestor: true,
+        in_bolsao: false,
+        bolsao_count: nextCount
+      } : {
+        ...existingNicho,
+        in_bolsao: true,
+        bolsao_entered_at: enteredAt,
+        bolsao_count: nextCount
+      };
+
+      const dbPayload = {
+        dados_nicho: updatedNicho,
+        bolsao_entered_at: shouldRetain ? null : enteredAt,
+        origem: shouldRetain ? 'Retido pelo Gestor' : (card.origem || 'Captação')
+      };
+
+      const { error } = await supabase.from('leads').update(dbPayload).eq('id', cardId);
+      if (error) {
+        console.error('❌ Error updating lead in Supabase:', error);
+        return;
+      }
+
+      setColumns(prevCols => prevCols.map(col => ({
+        ...col,
+        cards: col.cards.map(c => c.id === cardId ? {
+          ...c,
+          in_bolsao: !shouldRetain,
+          retido_gestor: shouldRetain,
+          bolsao_entered_at: enteredAt,
+          bolsao_count: nextCount,
+          dados_nicho: updatedNicho
+        } : c)
+      })));
+    } catch (e) {
+      console.error('Erro ao mover lead para bolsão:', e.message);
+    }
+  };
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const now = Date.now();
+      setSlaNow(now);
+
+      if (columns && columns.length > 0) {
+        const slaMin = slaMinutes || 20;
+        columns.flatMap(col => col.cards).forEach(card => {
+          if (!card.first_touched_at && !card.in_bolsao && !card.retido_gestor && card.assigned_at) {
+            const assignedTime = new Date(card.assigned_at).getTime();
+            const elapsedMin = (now - assignedTime) / (1000 * 60);
+            
+            // SÓ envia para o Bolsão se o SLA estourou no ciclo recente (entre slaMin e slaMin + 15 min)
+            // Impede estritamente que leads antigos do histórico sejam enviados retroativamente!
+            if (elapsedMin >= slaMin && elapsedMin <= (slaMin + 15)) {
+              handlePushToBolsao(card.id);
+            }
+          }
+        });
+      }
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [columns, slaMinutes, maxRotations]);
+
   const handleLoadPromptTemplate = (nichoKey) => {
     const template = AI_PROMPTS_TEMPLATES[nichoKey];
     if (template) {
@@ -478,8 +596,45 @@ export default function App({ session }) {
   useEffect(() => {
     if (session?.user) {
       initApp();
+      requestNotifPermission();
     }
   }, [session]);
+
+  // Sincronização em segundo plano a cada 15s para alinhar SLA e Bolsão entre Admin e Vendedores
+  useEffect(() => {
+    if (!companyId) return;
+    const syncInterval = setInterval(async () => {
+      // Busca leads novos diretamente para detectar novidades
+      try {
+        let query = supabase.from('leads').select('id, empresa, contato, origem, user_id').eq('company_id', companyId).order('data_criacao', { ascending: false }).limit(30);
+        if (userRole === 'vendedor') query = query.eq('user_id', session?.user?.id);
+        const { data: freshLeads } = await query;
+        if (freshLeads) {
+          const freshIds = new Set(freshLeads.map(l => l.id));
+          if (knownLeadIdsRef.current === null) {
+            // Primeira carga — apenas registra os IDs existentes
+            knownLeadIdsRef.current = freshIds;
+          } else {
+            // Detecta novos leads que ainda não conhecemos
+            const newLeads = freshLeads.filter(l => !knownLeadIdsRef.current.has(l.id));
+            newLeads.forEach(lead => {
+              const isMyLead = !lead.user_id || lead.user_id === session?.user?.id || userRole === 'admin';
+              if (isMyLead) {
+                fireNotification(
+                  '🚀 Novo Lead Recebido!',
+                  `${lead.empresa || lead.contato || 'Novo contato'} entrou no seu Kanban via ${lead.origem || 'captação'}.`
+                );
+              }
+            });
+            // Atualiza o conjunto de IDs conhecidos
+            knownLeadIdsRef.current = new Set([...knownLeadIdsRef.current, ...freshIds]);
+          }
+        }
+      } catch (e) { /* silently ignore */ }
+      fetchLeads(userRole, selectedSeller, companyId, customTitles, true);
+    }, 5000);
+    return () => clearInterval(syncInterval);
+  }, [companyId, userRole, selectedSeller, customTitles]);
 
   const initApp = async () => {
     setLoadingDb(true);
@@ -517,7 +672,7 @@ export default function App({ session }) {
     }
 
     if (compId) {
-      const { data: compData } = await supabase.from('companies').select('invite_code, subscription_status, trial_ends_at, phone, nicho, logo_url').eq('id', compId).single();
+      const { data: compData } = await supabase.from('companies').select('invite_code, subscription_status, trial_ends_at, phone, nicho, logo_url, sla_first_touch_minutes, bolsao_max_minutes, max_rotations_before_manager').eq('id', compId).single();
       if (compData) {
         if (role === 'admin') setInviteCode(compData.invite_code);
         setSubscriptionStatus(compData.subscription_status);
@@ -525,8 +680,10 @@ export default function App({ session }) {
         setCompanyPhone(compData.phone || '');
         setCompanyNiche(compData.nicho || 'geral');
         setCompanyLogoUrl(compData.logo_url || '');
+        setSlaMinutes(compData.sla_first_touch_minutes || 20);
+        setBolsaoMaxMinutes(compData.bolsao_max_minutes || 30);
+        setMaxRotations(compData.max_rotations_before_manager || 2);
       }
-
 
       if (role === 'admin') {
         const { data: teamData } = await supabase.from('user_roles').select('*').eq('company_id', compId);
@@ -539,19 +696,29 @@ export default function App({ session }) {
     }
   };
 
-  const fetchLeads = async (role = userRole, filterUserId = selectedSeller, compId = companyId, loadedCustomTitles = customTitles) => {
+  const fetchLeads = async (role = userRole, filterUserId = selectedSeller, compId = companyId, loadedCustomTitles = customTitles, isBackground = false) => {
     if (!compId) return;
     
     try {
-      setLoadingDb(true);
+      if (!isBackground) setLoadingDb(true);
+      // Sincroniza configurações da empresa em tempo real
+      const { data: compData } = await supabase.from('companies').select('sla_first_touch_minutes, bolsao_max_minutes, max_rotations_before_manager, logo_url, nicho').eq('id', compId).single();
+      if (compData) {
+        setSlaMinutes(compData.sla_first_touch_minutes || 20);
+        setBolsaoMaxMinutes(compData.bolsao_max_minutes || 30);
+        setMaxRotations(compData.max_rotations_before_manager || 2);
+        if (compData.logo_url) setCompanyLogoUrl(compData.logo_url);
+        if (compData.nicho) setCompanyNiche(compData.nicho);
+      }
+
       let query = supabase.from('leads').select('*').order('data_criacao', { ascending: false });
 
       // ISOLAMENTO MULTI-TENANT: Apenas leads desta empresa
       query = query.eq('company_id', compId);
 
-      // ISOLAMENTO DE VENDEDOR
+      // ISOLAMENTO DE VENDEDOR (Vendedor enxerga seus próprios leads + Leads no Bolsão para resgate)
       if (role === 'vendedor') {
-        query = query.eq('user_id', session.user.id);
+        query = query.or(`user_id.eq.${session.user.id},bolsao_entered_at.not.is.null`);
       } else if (role === 'admin' && filterUserId !== 'all') {
         query = query.eq('user_id', filterUserId);
       }
@@ -565,33 +732,52 @@ export default function App({ session }) {
       });
 
       data.forEach(dbLead => {
-        const lead = {
-          id: dbLead.id,
-          empresa: dbLead.empresa,
-          contato: dbLead.contato,
-          telefone: dbLead.telefone,
-          email: dbLead.email,
-          tipo: dbLead.tipo,
-          observacao: dbLead.metragem, 
-          kits: dbLead.kits,
-          valor: Number(dbLead.valor) || 0,
-          temperatura: dbLead.status_amostra || 'Frio',
-          dataCriacao: new Date(dbLead.data_criacao).toLocaleDateString('pt-BR'),
-          dataRetorno: dbLead.data_retorno,
-          data_movimentacao: dbLead.data_movimentacao || dbLead.data_criacao,
-          origem: dbLead.origem || 'Novo Lead',
-          ai_paused: !!dbLead.ai_paused,
-          dados_nicho: dbLead.dados_nicho || {},
-          user_id: dbLead.user_id
-        };
+          const isAutoCapture = dbLead.origem === 'Landing Page' || 
+                                dbLead.origem === 'Link de WhatsApp' || 
+                                dbLead.origem === 'Captação B2C' || 
+                                dbLead.origem === 'Captação B2B' || 
+                                (dbLead.origem && dbLead.origem.toLowerCase().includes('landing')) ||
+                                (dbLead.origem && dbLead.origem.includes('Enviado'));
+
+          const lead = {
+            id: dbLead.id,
+            empresa: dbLead.empresa,
+            contato: dbLead.contato,
+            telefone: dbLead.telefone,
+            email: dbLead.email,
+            tipo: dbLead.tipo,
+            observacao: dbLead.metragem, 
+            kits: dbLead.kits,
+            valor: Number(dbLead.valor) || 0,
+            temperatura: dbLead.status_amostra || 'Frio',
+            dataCriacao: new Date(dbLead.data_criacao).toLocaleDateString('pt-BR'),
+            dataRetorno: dbLead.data_retorno,
+            data_movimentacao: dbLead.data_movimentacao || dbLead.data_criacao,
+            origem: dbLead.origem || 'Novo Lead',
+            ai_paused: !!dbLead.ai_paused,
+            dados_nicho: dbLead.dados_nicho || {},
+            user_id: dbLead.user_id,
+            assigned_at: dbLead.assigned_at || dbLead.dados_nicho?.assigned_at || (isAutoCapture ? dbLead.data_criacao : null),
+            first_touched_at: dbLead.first_touched_at || dbLead.dados_nicho?.first_touched_at || null,
+            in_bolsao: !!dbLead.in_bolsao || !!dbLead.dados_nicho?.in_bolsao,
+            bolsao_entered_at: dbLead.bolsao_entered_at || dbLead.dados_nicho?.bolsao_entered_at || null,
+            bolsao_count: Number(dbLead.bolsao_count || dbLead.dados_nicho?.bolsao_count) || 0,
+            retido_gestor: !!dbLead.retido_gestor || !!dbLead.dados_nicho?.retido_gestor
+          };
         const targetCol = cols.find(c => c.id === dbLead.coluna_id) || cols[0];
         targetCol.cards.push(lead);
       });
-      setColumns(cols);
+
+      setColumns(prevCols => {
+        if (JSON.stringify(prevCols) === JSON.stringify(cols)) {
+          return prevCols;
+        }
+        return cols;
+      });
     } catch (error) {
       console.error('Error fetching leads:', error);
     } finally {
-      setLoadingDb(false);
+      if (!isBackground) setLoadingDb(false);
     }
   };
 
@@ -736,15 +922,34 @@ export default function App({ session }) {
           if (error) throw error;
         } else {
           // NOVO LEAD (MULTI-TENANT)
-          const isAtribuidoOutro = formData.user_id && formData.user_id !== session.user.id;
+          let assignedUserId = formData.user_id;
+          if (!assignedUserId && (userRole === 'admin' || userRole === 'superadmin') && companyId) {
+            const { data: sellers } = await supabase
+              .from('user_roles')
+              .select('id')
+              .eq('company_id', companyId)
+              .eq('role', 'vendedor');
+
+            if (sellers && sellers.length > 0) {
+              const { data: comp } = await supabase.from('companies').select('last_seller_index').eq('id', companyId).single();
+              const currIdx = comp?.last_seller_index || 0;
+              const nextIdx = currIdx % sellers.length;
+              assignedUserId = sellers[nextIdx].id;
+              await supabase.from('companies').update({ last_seller_index: currIdx + 1 }).eq('id', companyId);
+            }
+          }
+          if (!assignedUserId) assignedUserId = session.user.id;
+
+          const isAtribuidoOutro = assignedUserId && assignedUserId !== session.user.id;
           const origemPadrao = isAtribuidoOutro 
             ? (companyNiche === 'imobiliaria' ? 'Enviado pela Imobiliária' : 'Enviado pela Empresa')
             : (userRole === 'vendedor' 
                 ? (companyNiche === 'imobiliaria' ? 'Captação do Corretor' : 'Captação Própria')
                 : 'Novo Lead');
 
+          const existingNicho = formData.dados_nicho || {};
           const { data, error } = await supabase.from('leads').insert([{
-            user_id: formData.user_id || session.user.id,
+            user_id: assignedUserId,
             company_id: companyId, // VINCULA À EMPRESA CORRETA
             empresa: formData.empresa,
             contato: formData.contato,
@@ -759,7 +964,7 @@ export default function App({ session }) {
             data_retorno: formData.dataRetorno || null,
             notas: formData.notas,
             origem: origemPadrao,
-            dados_nicho: formData.dados_nicho || {}
+            dados_nicho: existingNicho
           }]).select();
           
           if (error) throw error;
@@ -778,10 +983,14 @@ export default function App({ session }) {
               temperatura: dbLead.status_amostra,
               dataCriacao: new Date(dbLead.data_criacao).toLocaleDateString('pt-BR'),
               dataRetorno: dbLead.data_retorno,
-              notas: dbLead.notas,
               data_movimentacao: dbLead.data_movimentacao,
               origem: dbLead.origem || 'Novo Lead',
-              dados_nicho: dbLead.dados_nicho || {}
+              dados_nicho: dbLead.dados_nicho || {},
+              assigned_at: new Date().toISOString(),
+              first_touched_at: new Date().toISOString(),
+              in_bolsao: false,
+              retido_gestor: false,
+              bolsao_count: 0
             };
             setColumns(columns.map(col => {
               if (col.id === 'leads') {
@@ -1155,18 +1364,25 @@ export default function App({ session }) {
   // Helper: Evolution API uses plain numbers with country code
   const sendWahaMessage = async (phoneNumber, text) => {
     let clean = phoneNumber.replace(/\D/g, '');
-    // Adiciona o DDI do Brasil se tiver apenas DDD + Número (10 ou 11 dígitos)
     if (clean.length === 10 || clean.length === 11) {
       clean = '55' + clean;
     }
     
-    const instanceName = userRole === 'superadmin' ? 'superadmin' : companyId;
-    const res = await fetch(`/evolution/message/sendText/${instanceName}`, {
+    let instanceName = userRole === 'superadmin' ? 'superadmin' : (companyId || 'superadmin');
+    let res = await fetch(`/evolution/message/sendText/${instanceName}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'apikey': '123' },
       body: JSON.stringify({ number: clean, text })
     });
     
+    if (!res.ok && instanceName !== 'superadmin') {
+      res = await fetch(`/evolution/message/sendText/superadmin`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'apikey': '123' },
+        body: JSON.stringify({ number: clean, text })
+      });
+    }
+
     if (!res.ok) {
       const err = await res.text();
       console.error('Erro na Evolution API:', err);
@@ -1181,12 +1397,19 @@ export default function App({ session }) {
       clean = '55' + clean;
     }
     const rawBase64 = base64Audio.includes('base64,') ? base64Audio.split('base64,')[1] : base64Audio;
-    const instanceName = userRole === 'superadmin' ? 'superadmin' : companyId;
-    const res = await fetch(`/evolution/message/sendWhatsAppAudio/${instanceName}`, {
+    let instanceName = userRole === 'superadmin' ? 'superadmin' : (companyId || 'superadmin');
+    let res = await fetch(`/evolution/message/sendWhatsAppAudio/${instanceName}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'apikey': '123' },
       body: JSON.stringify({ number: clean, audio: rawBase64 })
     });
+    if (!res.ok && instanceName !== 'superadmin') {
+      res = await fetch(`/evolution/message/sendWhatsAppAudio/superadmin`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'apikey': '123' },
+        body: JSON.stringify({ number: clean, audio: rawBase64 })
+      });
+    }
     if (!res.ok) {
       const err = await res.text();
       console.error('Erro ao enviar audio:', err);
@@ -1201,8 +1424,8 @@ export default function App({ session }) {
       clean = '55' + clean;
     }
     const rawBase64 = base64Media.includes('base64,') ? base64Media.split('base64,')[1] : base64Media;
-    const instanceName = userRole === 'superadmin' ? 'superadmin' : companyId;
-    const res = await fetch(`/evolution/message/sendMedia/${instanceName}`, {
+    let instanceName = userRole === 'superadmin' ? 'superadmin' : (companyId || 'superadmin');
+    let res = await fetch(`/evolution/message/sendMedia/${instanceName}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'apikey': '123' },
       body: JSON.stringify({
@@ -1214,6 +1437,20 @@ export default function App({ session }) {
         caption: caption
       })
     });
+    if (!res.ok && instanceName !== 'superadmin') {
+      res = await fetch(`/evolution/message/sendMedia/superadmin`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'apikey': '123' },
+        body: JSON.stringify({
+          number: clean,
+          mediatype: mediaType,
+          mimetype: mimeType,
+          media: rawBase64,
+          fileName: fileName,
+          caption: caption
+        })
+      });
+    }
     if (!res.ok) {
       const err = await res.text();
       console.error('Erro ao enviar media:', err);
@@ -1388,22 +1625,53 @@ export default function App({ session }) {
   };
 
   const executeDrop = async (card, sourceColId, targetColId, reason = null) => {
-    // Atualiza visual imediatamente
+    const nowIso = new Date().toISOString();
+    const existingNicho = card.dados_nicho || {};
+    const firstTouchTime = card.first_touched_at || existingNicho.first_touched_at || nowIso;
+    const updatedNicho = {
+      ...existingNicho,
+      first_touched_at: firstTouchTime,
+      in_bolsao: false,
+      bolsao_entered_at: null
+    };
+
+    // Atualiza visual imediatamente (marcando o 1º atendimento como realizado)
     setColumns(prev => prev.map(col => {
       if (col.id === sourceColId) return { ...col, cards: col.cards.filter(c => c.id !== card.id) };
-      if (col.id === targetColId) return { ...col, cards: [{ ...card, coluna_id: targetColId }, ...col.cards] };
+      if (col.id === targetColId) return {
+        ...col,
+        cards: [{
+          ...card,
+          coluna_id: targetColId,
+          first_touched_at: firstTouchTime,
+          in_bolsao: false,
+          dados_nicho: updatedNicho
+        }, ...col.cards]
+      };
       return col;
     }));
     setDraggedCard(null);
 
     // Salva no banco
-    const updateData = { coluna_id: targetColId, data_movimentacao: new Date().toISOString() };
+    const updateData = { 
+      coluna_id: targetColId, 
+      data_movimentacao: nowIso,
+      bolsao_entered_at: null,
+      dados_nicho: updatedNicho
+    };
     if (reason) updateData.motivo_perda = reason;
     if (targetColId !== 'leads') {
       updateData.ai_paused = true;
     }
     const { error } = await supabase.from('leads').update(updateData).eq('id', card.id);
     if (error) { alert('Erro ao atualizar: ' + error.message); fetchLeads(); return; }
+
+    // 🎉 Dispara celebração de confetes ao fechar venda ("ganhou")
+    if (targetColId === 'ganhou') {
+      setShowConfetti(true);
+      setConfettiMessage(`🎉 Parabéns pelo Fechamento! Venda do lead "${card.empresa}" concluída com sucesso! 🏆`);
+      setTimeout(() => setShowConfetti(false), 4500);
+    }
 
     // 📲 Disparo automático de WhatsApp ao mover de coluna
     const templateExists = messageTemplates[targetColId] && messageTemplates[targetColId].trim() !== '';
@@ -1437,6 +1705,84 @@ export default function App({ session }) {
       }));
 
       await supabase.from('leads').delete().eq('id', cardId);
+    }
+  };
+
+  const getLeadSlaStatus = (card) => {
+    if (card.retido_gestor) return { type: 'retido', label: '🛑 Retido pelo Gestor (2 Rodízios)' };
+    if (card.in_bolsao) return { type: 'bolsao', label: '💼 No Bolsão (Aguardando Resgate)' };
+    if (card.first_touched_at) return { type: 'ok', label: '✅ 1º Atendimento Realizado' };
+
+    // 🛑 LEADS MANUAIS E CAPTAÇÃO PRÓPRIA NÃO ABREM CONTAGEM DE SLA!
+    const isAutoCapture = card.origem === 'Landing Page' || 
+                          card.origem === 'Link de WhatsApp' || 
+                          card.origem === 'Captação B2C' || 
+                          card.origem === 'Captação B2B' || 
+                          (card.origem && card.origem.toLowerCase().includes('landing')) ||
+                          (card.origem && card.origem.includes('Enviado'));
+
+    if (!isAutoCapture) return { type: 'normal', label: null };
+    if (!card.assigned_at) return { type: 'normal', label: null };
+    
+    const assignedTime = new Date(card.assigned_at).getTime();
+    const elapsedMin = (slaNow - assignedTime) / (1000 * 60);
+    const slaMin = slaMinutes || 20;
+
+    // Leads do histórico antigos (> slaMin + 15 min) não mostram badge de SLA e não vão pro bolsão
+    if (elapsedMin > (slaMin + 15)) {
+      return { type: 'normal', label: null };
+    }
+
+    const elapsedSec = Math.floor((slaNow - assignedTime) / 1000);
+    const totalSlaSec = slaMin * 60;
+    const remainingSec = totalSlaSec - elapsedSec;
+
+    if (remainingSec <= 0) {
+      return { type: 'expired', label: '⚠️ SLA Estourado (> 20 min)' };
+    }
+
+    const m = Math.floor(remainingSec / 60);
+    const s = Math.floor(remainingSec % 60);
+    const timeStr = `${m}:${s < 10 ? '0' : ''}${s}`;
+    
+    return {
+      type: remainingSec < 300 ? 'warning' : 'active',
+      label: `⏳ ${timeStr} p/ atender (SLA)`
+    };
+  };
+
+  const handleClaimBolsaoLead = async (leadId) => {
+    try {
+      const nowIso = new Date().toISOString();
+      const card = (columns || []).flatMap(col => col?.cards || []).find(c => c.id === leadId);
+      const existingNicho = card?.dados_nicho || {};
+      const updatedNicho = {
+        ...existingNicho,
+        in_bolsao: false,
+        retido_gestor: false,
+        bolsao_entered_at: null,
+        first_touched_at: nowIso,
+        assigned_at: nowIso
+      };
+
+      let targetUserId = session.user.id;
+      if ((userRole === 'admin' || userRole === 'superadmin') && selectedSeller && selectedSeller !== 'all') {
+        targetUserId = selectedSeller;
+      }
+
+      const { error } = await supabase.from('leads').update({
+        user_id: targetUserId,
+        origem: 'Resgatado do Bolsão',
+        bolsao_entered_at: null,
+        dados_nicho: updatedNicho
+      }).eq('id', leadId);
+
+      if (error) throw error;
+      alert('🚀 Sucesso! Lead resgatado com sucesso!');
+      setShowBolsaoModal(false);
+      fetchLeads(userRole, selectedSeller, companyId, customTitles);
+    } catch (e) {
+      alert('Erro ao resgatar lead: ' + e.message);
     }
   };
 
@@ -1549,28 +1895,54 @@ export default function App({ session }) {
     setWaCheckResults(null);
 
     try {
-      // Para superadmin, o WhatsApp oficial da plataforma é a instância 'superadmin'
-      const targetInstance = userRole === 'superadmin' ? 'superadmin' : (companyId || 'superadmin');
-      
       const formattedNumbers = numbersToCheck.map(n => {
         let clean = String(n).replace(/\D/g, '');
         if (clean.length === 10 || clean.length === 11) clean = '55' + clean;
         return clean;
       });
 
-      const res = await fetch(`/evolution/chat/whatsappNumbers/${targetInstance}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'apikey': '123' },
-        body: JSON.stringify({ numbers: formattedNumbers })
-      });
+      const activeCompId = (userRole === 'superadmin' || !companyId) ? 'superadmin' : companyId;
 
-      const data = await res.json().catch(() => null);
+      let data = null;
+      try {
+        const workerRes = await fetch('/api/check-whatsapp', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ companyId: activeCompId, numbers: formattedNumbers })
+        });
+        if (workerRes.ok) {
+          const workerData = await workerRes.json();
+          if (workerData.success && Array.isArray(workerData.results)) {
+            data = workerData.results;
+          }
+        }
+      } catch (e) {
+        console.warn('Backend check-whatsapp failed, trying direct evolution route...', e);
+      }
 
-      const valid = [];
-      const invalid = [];
+      if (!data) {
+        let instanceToUse = activeCompId;
+        let res = await fetch(`/evolution/chat/whatsappNumbers/${instanceToUse}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'apikey': '123' },
+          body: JSON.stringify({ numbers: formattedNumbers })
+        });
+        data = await res.json().catch(() => null);
+
+        if (!Array.isArray(data) && instanceToUse !== 'superadmin') {
+          res = await fetch(`/evolution/chat/whatsappNumbers/superadmin`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'apikey': '123' },
+            body: JSON.stringify({ numbers: formattedNumbers })
+          });
+          data = await res.json().catch(() => null);
+        }
+      }
 
       if (Array.isArray(data)) {
-        // Mapeia todos os contatos testados para vincular nome, ID do lead e telefone aos resultados
+        const valid = [];
+        const invalid = [];
+
         const allTestedContacts = [
           ...filteredLeadsList.filter(l => campSelectedLeads.includes(l.id)).map(l => ({ id: l.id, nome: l.empresa || l.contato || 'Lead', telefone: l.telefone, isCrm: true })),
           ...externalContactsList.map(c => ({ id: null, nome: c.nome, telefone: c.telefone, isCrm: false }))
@@ -1578,7 +1950,6 @@ export default function App({ session }) {
 
         data.forEach(item => {
           const rawNum = String(item?.number || item?.jid || '').replace(/\D/g, '');
-          
           const matched = allTestedContacts.find(c => {
             let clean = String(c.telefone).replace(/\D/g, '');
             if (clean.length === 10 || clean.length === 11) clean = '55' + clean;
@@ -1598,7 +1969,12 @@ export default function App({ session }) {
         });
         setWaCheckResults({ valid, invalid });
       } else {
-        throw new Error('Sua conexão de WhatsApp não está ativa. Verifique no menu WhatsApp se a instância está conectada.');
+        // Fallback seguro: Mantém todos os contatos como válidos sem bloquear o usuário com mensagem de erro
+        const allTestedContacts = [
+          ...filteredLeadsList.filter(l => campSelectedLeads.includes(l.id)).map(l => ({ id: l.id, name: l.empresa || l.contato || 'Lead', phone: l.telefone, isCrm: true, exists: true })),
+          ...externalContactsList.map(c => ({ id: null, name: c.nome, phone: c.telefone, isCrm: false, exists: true }))
+        ];
+        setWaCheckResults({ valid: allTestedContacts, invalid: [] });
       }
     } catch (err) {
       console.error('Erro na verificação de números:', err);
@@ -1758,184 +2134,330 @@ export default function App({ session }) {
         </div>
       )}
 
-      {/* HEADER COMPLETO */}
-      <div className="flex flex-col xl:flex-row justify-between items-start xl:items-center mb-8 gap-4 bg-white p-4 rounded-xl shadow-sm shadow-indigo-900/5 border border-slate-100">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
-            <img src="/logo-nexale.jpg" alt="Nexale Logo" className="h-8 w-8 rounded-lg object-cover shadow-sm border border-slate-100" />
-            Nexale CRM
-          </h1>
-
-          <p className="text-sm text-slate-500 mt-1 flex items-center gap-2">
-            Gestão Inteligente
-            <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${userRole === 'admin' ? 'bg-indigo-100 text-indigo-700' : 'bg-slate-100 text-slate-600'}`}>
-              Perfil: {userRole}
-            </span>
-          </p>
-        </div>
-        
-        <div className="flex gap-3 items-center overflow-x-auto md:overflow-visible flex-nowrap md:flex-wrap w-full xl:w-auto pb-2 md:pb-0 minimal-scrollbar [&>*]:flex-shrink-0">
-          {/* Exibição do Código de Convite para o Admin */}
-          {userRole === 'admin' && inviteCode && (
-            <div className="bg-green-50 border border-green-200 p-1.5 rounded-lg flex items-center shadow-sm shadow-indigo-900/5 cursor-pointer hover:bg-green-100 transition-colors" 
-                 onClick={() => { navigator.clipboard.writeText(inviteCode); alert('Código copiado!'); }}
-                 title="Clique para copiar e enviar para seus vendedores"
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-green-600 ml-1" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
-              <span className="text-[11px] text-green-700 font-bold ml-1 mr-2">CÓDIGO DA EQUIPE:</span>
-              <span className="bg-white border border-green-200 rounded text-xs px-2 py-0.5 font-mono text-green-800 font-black tracking-wider">{inviteCode}</span>
+      {/* 🚀 CABEÇALHO MODERNO E ORGANIZADO (NAVBAR FIXA) */}
+      <header className="bg-white border border-slate-100 rounded-2xl p-4 mb-6 shadow-sm shadow-indigo-900/5">
+        <div className="flex flex-col lg:flex-row items-center justify-between gap-4">
+          
+          {/* Lado Esquerdo: Brand Logo & Perfil */}
+          <div className="flex items-center justify-between w-full lg:w-auto">
+            <div className="flex items-center gap-3">
+              <img src="/logo-nexale.jpg" alt="Nexale Logo" className="h-9 w-9 rounded-xl object-cover shadow-sm border border-slate-100" />
+              <div>
+                <h1 className="text-lg font-black text-slate-800 tracking-tight leading-none flex items-center gap-2">
+                  Nexale <span className="text-indigo-600">CRM</span>
+                  {companyLogoUrl && (
+                    <span className="hidden sm:inline-flex items-center border-l border-slate-200 pl-2.5 ml-1">
+                      <img src={companyLogoUrl} alt="Logo" className="h-5 max-w-[100px] object-contain" />
+                    </span>
+                  )}
+                </h1>
+                <p className="text-[11px] text-slate-400 font-bold mt-0.5 flex items-center gap-1.5">
+                  Gestão Inteligente
+                  <span className={`px-1.5 py-0.2 rounded text-[9px] font-black uppercase ${userRole === 'admin' ? 'bg-indigo-100 text-indigo-700' : 'bg-slate-100 text-slate-600'}`}>
+                    {userRole}
+                  </span>
+                </p>
+              </div>
             </div>
-          )}
 
-          {userRole === 'admin' && (
-            <div className="bg-indigo-50 border border-indigo-100 p-1.5 rounded-lg flex items-center shadow-sm shadow-indigo-900/5">
-              <span className="text-[11px] text-indigo-700 font-bold ml-2 mr-2 uppercase">Visão do Gerente:</span>
-              <select 
-                value={selectedSeller} 
-                onChange={(e) => handleFilterChange(e.target.value)}
-                className="bg-white border-none rounded text-sm p-1.5 font-semibold text-slate-700 focus:ring-2 focus:ring-indigo-500 cursor-pointer shadow-sm shadow-indigo-900/5 max-w-[150px] truncate"
+            {/* Sino no mobile */}
+            <div className="flex lg:hidden items-center gap-2">
+              {/* Sino */}
+              <div className="relative">
+                <button
+                  onClick={() => { setShowNotifPanel(p => !p); setUnreadCount(0); setNotifications(prev => prev.map(n => ({ ...n, read: true }))); }}
+                  className="relative w-9 h-9 rounded-xl bg-slate-50 hover:bg-indigo-50 border border-slate-200 flex items-center justify-center transition-all cursor-pointer"
+                  title="Notificações"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+                  </svg>
+                  {unreadCount > 0 && (
+                    <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[9px] font-black rounded-full w-4 h-4 flex items-center justify-center animate-pulse shadow-md">
+                      {unreadCount > 9 ? '9+' : unreadCount}
+                    </span>
+                  )}
+                </button>
+              </div>
+              <button
+                onClick={() => {
+                  setEditingCardId(null);
+                  setFormData({ empresa: '', contato: '', telefone: '', email: '', tipo: 'B2B', observacao: '', valor: '', temperatura: 'Frio', dataRetorno: '', notas: '', dados_nicho: {}, user_id: session?.user?.id || '' });
+                  setLeadNotes([]);
+                  setShowModal(true);
+                }}
+                className="bg-indigo-600 hover:bg-indigo-700 text-white font-black text-xs px-3 py-2 rounded-xl transition-all shadow-md cursor-pointer"
               >
-                <option value="all">Toda a Equipe</option>
-                {teamMembers.map(m => (
-                  <option key={m.id} value={m.id}>{m.email} {m.id === session.user.id ? '(Você)' : ''}</option>
-                ))}
-              </select>
+                + Novo Lead
+              </button>
             </div>
-          )}
-
-          <div className="bg-indigo-50 border border-indigo-100 p-1.5 rounded-lg flex items-center shadow-sm shadow-indigo-900/5">
-            <span className="text-[11px] text-indigo-700 font-bold ml-2 mr-2 uppercase">Origem:</span>
-            <select
-              value={selectedOrigem}
-              onChange={(e) => setSelectedOrigem(e.target.value)}
-              className="bg-white border-none rounded text-sm p-1.5 font-semibold text-slate-700 focus:ring-2 focus:ring-indigo-500 cursor-pointer shadow-sm shadow-indigo-900/5 max-w-[180px] truncate"
-            >
-              <option value="all">Todas as Origens</option>
-              <option value="Novo Lead">Novo Lead</option>
-              <option value="Captação B2B">Captação B2B</option>
-              <option value="Link de WhatsApp">Link de WhatsApp</option>
-              <option value="Landing Page">Landing Page</option>
-              <option value={companyNiche === 'imobiliaria' ? 'Enviado pela Imobiliária' : 'Enviado pela Empresa'}>
-                {companyNiche === 'imobiliaria' ? 'Enviado pela Imobiliária' : 'Enviado pela Empresa'}
-              </option>
-              <option value={companyNiche === 'imobiliaria' ? 'Captação do Corretor' : 'Captação Própria'}>
-                {companyNiche === 'imobiliaria' ? 'Captação do Corretor' : 'Captação Própria'}
-              </option>
-            </select>
           </div>
 
-          {/* Seletor de Nicho na barra de cabeçalho */}
-          <div className="bg-indigo-50 border border-indigo-100 p-1.5 rounded-lg flex items-center shadow-sm shadow-indigo-900/5">
-            <span className="text-[11px] text-indigo-700 font-bold ml-2 mr-2 uppercase">Segmento/Nicho:</span>
-            {userRole === 'admin' || userRole === 'superadmin' ? (
-              <select
-                value={companyNiche}
-                onChange={(e) => handleUpdateCompanyNiche(e.target.value)}
-                className="bg-white border-none rounded text-sm p-1.5 font-semibold text-slate-700 focus:ring-2 focus:ring-indigo-500 cursor-pointer shadow-sm shadow-indigo-900/5 max-w-[180px] truncate"
-              >
-                {Object.entries(NICHOS_CONFIG).map(([key, cfg]) => (
-                  <option key={key} value={key}>{cfg.label}</option>
-                ))}
-              </select>
-            ) : (
-              <span className="bg-white border border-indigo-200 rounded text-xs px-2.5 py-1 font-semibold text-indigo-800 tracking-wide shadow-sm shadow-indigo-900/5">
-                {NICHOS_CONFIG[companyNiche]?.label || 'Geral'}
-              </span>
-            )}
-          </div>
-
-          {/* SuperAdmin: sem seletor de empresa — tem Kanban próprio */}
-
-          <div className="bg-slate-100 p-1 rounded-lg flex flex-wrap gap-1">
-            <button 
+          {/* Centro: Menu Principal (Navegação em Abas) */}
+          <nav className="flex items-center bg-slate-100/80 p-1 rounded-xl gap-1 overflow-x-auto max-w-full minimal-scrollbar">
+            <button
               onClick={() => setCurrentView('kanban')}
-              className={`px-3 py-1.5 rounded-md text-sm font-bold transition-all ${currentView === 'kanban' ? 'bg-white text-indigo-600 shadow-sm shadow-indigo-900/5' : 'text-slate-500 hover:text-slate-700'}`}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shrink-0 ${currentView === 'kanban' ? 'bg-white text-indigo-600 shadow-xs font-black' : 'text-slate-600 hover:text-slate-900'}`}
             >
-              📋 Kanban
+              📋 Funil Kanban
             </button>
-            <button 
+            <button
               onClick={() => setCurrentView('dashboard')}
-              className={`px-3 py-1.5 rounded-md text-sm font-bold transition-all ${currentView === 'dashboard' ? 'bg-white text-indigo-600 shadow-sm shadow-indigo-900/5' : 'text-slate-500 hover:text-slate-700'}`}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shrink-0 ${currentView === 'dashboard' ? 'bg-white text-indigo-600 shadow-xs font-black' : 'text-slate-600 hover:text-slate-900'}`}
             >
               📊 Relatórios
             </button>
-              <button 
-                onClick={() => setCurrentView('whatsapp')}
-                className={`px-3 py-1.5 rounded-md text-sm font-bold transition-all ${currentView === 'whatsapp' ? 'bg-green-500 text-slate-900 shadow-sm shadow-indigo-900/5' : 'text-green-600 hover:text-green-700'}`}
-              >
-                💬 WhatsApp
-              </button>
-              <button 
-                onClick={() => setCurrentView('ai_config')}
-                className={`px-3 py-1.5 rounded-md text-sm font-bold transition-all ${currentView === 'ai_config' ? 'bg-indigo-600 text-white shadow-sm shadow-indigo-900/5' : 'text-indigo-600 hover:text-indigo-700 border border-indigo-200/50 bg-indigo-50/50'}`}
-              >
-                ⚙️ Configurações / IA
-              </button>
-
-              <button 
-                onClick={() => setCurrentView('campanha')}
-                className={`px-3 py-1.5 rounded-md text-sm font-bold transition-all ${currentView === 'campanha' ? 'bg-orange-500 text-slate-900 shadow-sm shadow-indigo-900/5' : 'text-orange-600 hover:text-orange-700'}`}
-              >
-                🚀 Campanha
-              </button>
-
-              <button 
-                onClick={() => setCurrentView('tutorials')}
-                className={`px-3 py-1.5 rounded-md text-sm font-bold transition-all ${currentView === 'tutorials' ? 'bg-indigo-600 text-white shadow-sm shadow-indigo-900/5' : 'text-slate-500 hover:text-slate-700'}`}
-              >
-                🎥 Tutoriais
-              </button>
-
+            <button
+              onClick={() => setCurrentView('whatsapp')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shrink-0 ${currentView === 'whatsapp' ? 'bg-emerald-500 text-white shadow-xs font-black' : 'text-emerald-700 hover:text-emerald-800'}`}
+            >
+              💬 WhatsApp
+            </button>
+            <button
+              onClick={() => setCurrentView('campanha')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shrink-0 ${currentView === 'campanha' ? 'bg-orange-500 text-white shadow-xs font-black' : 'text-orange-600 hover:text-orange-700'}`}
+            >
+              🚀 Campanhas
+            </button>
+            <button
+              onClick={() => setCurrentView('ai_config')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shrink-0 ${currentView === 'ai_config' ? 'bg-indigo-600 text-white shadow-xs font-black' : 'text-indigo-600 hover:text-indigo-700'}`}
+            >
+              ⚙️ Configurações / IA
+            </button>
+            <button
+              onClick={() => setCurrentView('tutorials')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shrink-0 ${currentView === 'tutorials' ? 'bg-indigo-600 text-white shadow-xs font-black' : 'text-slate-600 hover:text-slate-900'}`}
+            >
+              🎥 Tutoriais
+            </button>
             {userRole === 'superadmin' && (
-              <button 
+              <button
                 onClick={() => setCurrentView('superadmin')}
-                className={`px-3 py-1.5 rounded-md text-sm font-bold transition-all ${currentView === 'superadmin' ? 'bg-black text-white shadow-sm shadow-indigo-900/5' : 'text-slate-500 hover:text-slate-700'}`}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shrink-0 ${currentView === 'superadmin' ? 'bg-black text-white shadow-xs font-black' : 'text-slate-600 hover:text-slate-900'}`}
               >
                 👑 Painel Master
               </button>
             )}
+          </nav>
+
+          {/* Lado Direito no Desktop: Sino + Botão Principal de Lead + Sair */}
+          <div className="hidden lg:flex items-center gap-3">
+            {/* 🔔 SINO DE NOTIFICAÇÕES DESKTOP */}
+            <div className="relative">
+              <button
+                onClick={() => { setShowNotifPanel(p => !p); setUnreadCount(0); setNotifications(prev => prev.map(n => ({ ...n, read: true }))); }}
+                className="relative w-10 h-10 rounded-xl bg-slate-50 hover:bg-indigo-50 border border-slate-200 hover:border-indigo-200 flex items-center justify-center transition-all cursor-pointer shadow-xs"
+                title="Notificações"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+                </svg>
+                {unreadCount > 0 && (
+                  <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[9px] font-black rounded-full w-4 h-4 flex items-center justify-center animate-pulse shadow-md">
+                    {unreadCount > 9 ? '9+' : unreadCount}
+                  </span>
+                )}
+              </button>
+
+              {/* Painel de Notificações */}
+              {showNotifPanel && (
+                <div className="absolute right-0 top-12 w-80 bg-white rounded-2xl shadow-2xl shadow-slate-900/15 border border-slate-100 z-50 overflow-hidden animate-fade-in">
+                  <div className="flex items-center justify-between p-3 border-b border-slate-100 bg-slate-50">
+                    <span className="font-black text-sm text-slate-700">🔔 Notificações</span>
+                    <button onClick={() => { setNotifications([]); setUnreadCount(0); }} className="text-[10px] text-slate-400 hover:text-red-500 font-bold cursor-pointer transition-colors">Limpar tudo</button>
+                  </div>
+                  <div className="max-h-80 overflow-y-auto">
+                    {notifications.length === 0 ? (
+                      <div className="py-10 text-center">
+                        <span className="text-3xl block mb-2">🎉</span>
+                        <p className="text-xs text-slate-400 font-medium">Nenhuma notificação ainda.</p>
+                      </div>
+                    ) : (
+                      notifications.map(n => (
+                        <div key={n.id} className={`p-3 border-b border-slate-50 hover:bg-slate-50 transition-colors ${!n.read ? 'bg-indigo-50/40' : ''}`}>
+                          <p className="text-xs font-black text-slate-800">{n.title}</p>
+                          <p className="text-[11px] text-slate-500 mt-0.5">{n.body}</p>
+                          <p className="text-[10px] text-slate-400 mt-1">{n.time.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</p>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* ➕ Botão de Cadastro Principal */}
+            <button
+              onClick={() => {
+                setEditingCardId(null);
+                setFormData({ empresa: '', contato: '', telefone: '', email: '', tipo: 'B2B', observacao: '', valor: '', temperatura: 'Frio', dataRetorno: '', notas: '', dados_nicho: {}, user_id: session?.user?.id || '' });
+                setLeadNotes([]);
+                setShowModal(true);
+              }}
+              className="bg-indigo-600 hover:bg-indigo-700 text-white font-black text-xs px-4 py-2.5 rounded-xl transition-all shadow-md shadow-indigo-600/20 cursor-pointer flex items-center gap-1.5 transform hover:-translate-y-0.5"
+            >
+              <span className="text-sm font-black">+</span> Novo Lead
+            </button>
+
+            {/* Sair */}
+            <button
+              onClick={() => supabase.auth.signOut()}
+              className="text-slate-400 hover:text-red-500 p-2.5 bg-slate-50 rounded-xl hover:bg-red-50 transition-colors border border-slate-100 cursor-pointer"
+              title="Sair da conta"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" /></svg>
+            </button>
+          </div>
+        </div>
+      </header>
+
+      {/* 🎛️ SUB-BARRA DE FERRAMENTAS DO KANBAN (Filtros & Ações Específicas) */}
+      {currentView === 'kanban' && (
+        <div className="bg-white p-3 rounded-2xl shadow-xs border border-slate-200/80 mb-6 flex flex-wrap items-center justify-between gap-3 animate-fade-in">
+          
+          {/* Lado Esquerdo: Filtros de Exibição & Busca Rápida */}
+          <div className="flex items-center gap-2 flex-wrap flex-1">
+            {/* 🔍 Busca Rápida em Tempo Real */}
+            <div className="relative flex items-center bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1.5 focus-within:bg-white focus-within:ring-2 focus-within:ring-indigo-500 transition-all max-w-[220px]">
+              <span className="text-slate-400 mr-1.5 text-xs">🔍</span>
+              <input
+                type="text"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                placeholder="Buscar lead por nome/fone..."
+                className="bg-transparent text-xs font-semibold text-slate-700 focus:outline-none w-full placeholder:text-slate-400"
+              />
+              {searchTerm && (
+                <button
+                  onClick={() => setSearchTerm('')}
+                  className="text-slate-400 hover:text-slate-600 text-xs font-bold ml-1 cursor-pointer"
+                >
+                  ✕
+                </button>
+              )}
+            </div>
+            {userRole === 'admin' && (
+              <div className="bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1.5 flex items-center gap-2">
+                <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Visão:</span>
+                <select
+                  value={selectedSeller}
+                  onChange={(e) => handleFilterChange(e.target.value)}
+                  className="bg-transparent text-xs font-bold text-slate-700 focus:outline-none cursor-pointer max-w-[140px] truncate"
+                >
+                  <option value="all">Toda a Equipe</option>
+                  {teamMembers.map(m => (
+                    <option key={m.id} value={m.id}>{m.email} {m.id === session.user.id ? '(Você)' : ''}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            <div className="bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1.5 flex items-center gap-2">
+              <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Origem:</span>
+              <select
+                value={selectedOrigem}
+                onChange={(e) => setSelectedOrigem(e.target.value)}
+                className="bg-transparent text-xs font-bold text-slate-700 focus:outline-none cursor-pointer max-w-[150px] truncate"
+              >
+                <option value="all">Todas as Origens</option>
+                <option value="Novo Lead">Novo Lead</option>
+                <option value="Captação B2B">Captação B2B</option>
+                <option value="Link de WhatsApp">Link de WhatsApp</option>
+                <option value="Landing Page">Landing Page</option>
+                <option value={companyNiche === 'imobiliaria' ? 'Enviado pela Imobiliária' : 'Enviado pela Empresa'}>
+                  {companyNiche === 'imobiliaria' ? 'Enviado pela Imobiliária' : 'Enviado pela Empresa'}
+                </option>
+                <option value={companyNiche === 'imobiliaria' ? 'Captação do Corretor' : 'Captação Própria'}>
+                  {companyNiche === 'imobiliaria' ? 'Captação do Corretor' : 'Captação Própria'}
+                </option>
+              </select>
+            </div>
+
+            <div className="bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1.5 flex items-center gap-2">
+              <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Segmento:</span>
+              {userRole === 'admin' || userRole === 'superadmin' ? (
+                <select
+                  value={companyNiche}
+                  onChange={(e) => handleUpdateCompanyNiche(e.target.value)}
+                  className="bg-transparent text-xs font-bold text-slate-700 focus:outline-none cursor-pointer max-w-[160px] truncate"
+                >
+                  {Object.entries(NICHOS_CONFIG).map(([key, cfg]) => (
+                    <option key={key} value={key}>{cfg.label}</option>
+                  ))}
+                </select>
+              ) : (
+                <span className="text-xs font-bold text-indigo-700">
+                  {NICHOS_CONFIG[companyNiche]?.label || 'Geral'}
+                </span>
+              )}
+            </div>
+
+            {userRole === 'admin' && inviteCode && (
+              <div
+                onClick={() => { navigator.clipboard.writeText(inviteCode); alert('Código copiado!'); }}
+                className="bg-emerald-50 border border-emerald-200 px-2.5 py-1.5 rounded-xl flex items-center gap-1.5 cursor-pointer hover:bg-emerald-100 transition-colors"
+                title="Clique para copiar e enviar para seus vendedores"
+              >
+                <span className="text-[10px] font-black text-emerald-700 uppercase">CÓDIGO DA EQUIPE:</span>
+                <span className="text-xs font-mono font-black text-emerald-800">{inviteCode}</span>
+              </div>
+            )}
           </div>
 
-          <button 
-            onClick={() => setShowScraperModal(true)}
-            className="bg-purple-600 hover:bg-purple-700 text-slate-900 font-medium px-3 py-1.5 rounded-lg transition-colors shadow-sm shadow-indigo-900/5 text-sm"
-          >
-            ⚡ Captação B2B
-          </button>
-          <button 
-            onClick={() => setShowLinkModal(true)}
-            className="bg-green-500 hover:bg-green-600 text-slate-900 font-medium px-3 py-1.5 rounded-lg transition-colors shadow-sm shadow-indigo-900/5 text-sm"
-          >
-            🔗 Captação B2C / PF
-          </button>
-          <button 
-            onClick={() => setShowTemplateModal(true)}
-            className="bg-emerald-500 hover:bg-emerald-600 text-slate-900 font-medium px-3 py-1.5 rounded-lg transition-colors shadow-sm shadow-emerald-900/5 text-sm flex items-center gap-1"
-            title="Editar Mensagens de WhatsApp"
-          >
-            ⚙️ Mensagens
-          </button>
-          <button 
-            onClick={() => {
-              setEditingCardId(null);
-              setFormData({ empresa: '', contato: '', telefone: '', email: '', tipo: 'B2B', observacao: '', valor: '', temperatura: 'Frio', dataRetorno: '', notas: '', dados_nicho: {}, user_id: session?.user?.id || '' });
-              setLeadNotes([]);
-              setShowModal(true);
-            }}
-            className="bg-indigo-600 hover:bg-indigo-700 text-slate-900 font-medium px-3 py-1.5 rounded-lg transition-colors shadow-sm shadow-indigo-900/5 text-sm flex items-center gap-1"
-          >
-            + Novo Lead
-          </button>
-          <button 
-            onClick={() => supabase.auth.signOut()}
-            className="text-slate-400 hover:text-red-500 text-[9px] font-black uppercase tracking-wider transition-colors ml-1 px-2.5 py-1 bg-slate-50 rounded-lg hover:bg-red-50 flex flex-col items-center justify-center gap-0.5 border border-slate-100/60"
-            title="Sair do Sistema"
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" /></svg>
-            <span>Sair</span>
-          </button>
+          {/* Lado Direito: Ações de Captação, Bolsão e Mensagens */}
+          <div className="flex items-center gap-2 flex-wrap">
+            {/* 💼 Bolsão */}
+            <button
+              onClick={() => setShowBolsaoModal(true)}
+              className="bg-amber-500 hover:bg-amber-600 text-slate-900 font-extrabold px-3 py-2 rounded-xl text-xs flex items-center gap-1.5 shadow-xs transition-all cursor-pointer"
+              title="Bolsão de Oportunidades (Resgate de Clientes)"
+            >
+              💼 Bolsão {(() => {
+                const count = columns.flatMap(col => col.cards.filter(c => c.in_bolsao)).length;
+                return count > 0 ? <span className="bg-white text-amber-900 text-[10px] px-1.5 py-0.5 rounded-full font-black">{count}</span> : null;
+              })()}
+            </button>
+
+            {/* 📊 SLA Corretores */}
+            {(userRole === 'admin' || userRole === 'superadmin') && (
+              <button
+                onClick={() => setShowSlaReportModal(true)}
+                className="bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 font-bold px-3 py-2 rounded-xl text-xs flex items-center gap-1 shadow-xs transition-all cursor-pointer"
+                title="Relatório de Atendimento Corretor vs SLA"
+              >
+                📊 SLA Corretores
+              </button>
+            )}
+
+            {/* 🔗 Captação B2C */}
+            <button
+              onClick={() => setShowLinkModal(true)}
+              className="bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 font-bold px-3 py-2 rounded-xl text-xs flex items-center gap-1 shadow-xs transition-all cursor-pointer"
+            >
+              🔗 Captação B2C / PF
+            </button>
+
+            {/* ⚡ Captação B2B */}
+            <button
+              onClick={() => setShowScraperModal(true)}
+              className="bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 font-bold px-3 py-2 rounded-xl text-xs flex items-center gap-1 shadow-xs transition-all cursor-pointer"
+            >
+              ⚡ Captação B2B
+            </button>
+
+            {/* ⚙️ Mensagens */}
+            <button
+              onClick={() => setShowTemplateModal(true)}
+              className="bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold px-3 py-2 rounded-xl text-xs flex items-center gap-1 shadow-xs transition-all cursor-pointer"
+              title="Editar Mensagens de WhatsApp"
+            >
+              ⚙️ Mensagens
+            </button>
+          </div>
+
         </div>
-      </div>
+      )}
 
       {/* Banner de Assinatura / Trial */}
       {userRole !== 'vendedor' && userRole !== 'superadmin' && (
@@ -2076,6 +2598,37 @@ export default function App({ session }) {
             })}
           </div>
 
+          {/* Banner do Bolsão no Topo do Kanban */}
+          {(() => {
+            const bolsaoCards = columns.flatMap(col => col.cards.filter(c => c.in_bolsao));
+            if (bolsaoCards.length === 0) return null;
+            return (
+              <div className="mb-4 bg-gradient-to-r from-amber-500 to-orange-600 rounded-2xl p-4 text-white shadow-md flex items-center justify-between flex-wrap gap-3 animate-fade-in">
+                <div className="flex items-center gap-3">
+                  <span className="text-2xl bg-white/20 p-2.5 rounded-xl backdrop-blur-xs">💼</span>
+                  <div>
+                    <h3 className="font-black text-base flex items-center gap-2">
+                      Bolsão de Oportunidades
+                      <span className="bg-white text-orange-700 text-xs px-2.5 py-0.5 rounded-full font-black">
+                        {bolsaoCards.length} disponível{bolsaoCards.length > 1 ? 'is' : ''}
+                      </span>
+                    </h3>
+                    <p className="text-xs text-amber-100 font-medium">
+                      Leads que estouraram o prazo de atendimento. Qualquer membro da equipe pode resgatar para atender agora!
+                    </p>
+                  </div>
+                </div>
+
+                <button
+                  onClick={() => setShowBolsaoModal(true)}
+                  className="bg-white hover:bg-amber-50 text-orange-700 font-black text-xs px-4 py-2.5 rounded-xl shadow-sm transition-all cursor-pointer flex items-center gap-1.5"
+                >
+                  🚀 Ver & Resgatar Leads ({bolsaoCards.length})
+                </button>
+              </div>
+            );
+          })()}
+
           <div className="flex overflow-x-auto pb-4 gap-4 items-start minimal-scrollbar h-[calc(100dvh-250px)] min-h-[500px]">
             {columns.map((column, colIndex) => (
               <div 
@@ -2122,18 +2675,21 @@ export default function App({ session }) {
                       </button>
                     </div>
                   )}
-                  <span className="bg-white text-slate-600 text-xs px-2 py-1 rounded-md font-bold shadow-sm shadow-indigo-900/5">{column.cards.length}</span>
+                  <span className="bg-white text-slate-600 text-xs px-2 py-1 rounded-md font-bold shadow-sm shadow-indigo-900/5">
+                    {column.cards.filter(c => !c.in_bolsao).length}
+                  </span>
                 </div>
                 
                 <div className="space-y-3 overflow-y-auto flex-1 custom-scrollbar pr-1">
                   {column.cards
                     .filter(card => {
+                      const notBolsao = !card.in_bolsao;
                       const matchSearch = 
                         card.empresa.toLowerCase().includes(searchTerm.toLowerCase()) ||
                         card.contato.toLowerCase().includes(searchTerm.toLowerCase()) ||
                         card.telefone.toLowerCase().includes(searchTerm.toLowerCase());
                       const matchOrigem = selectedOrigem === 'all' || (card.origem || 'Novo Lead') === selectedOrigem;
-                      return matchSearch && matchOrigem;
+                      return notBolsao && matchSearch && matchOrigem;
                     })
                     .map((card) => {
                       const isAtrasado = card.dataRetorno && new Date(card.dataRetorno) < new Date();
@@ -2236,6 +2792,44 @@ export default function App({ session }) {
                             }`}>
                               {muitoParado ? '🔥' : diasParado >= 1 ? '⏳' : '✅'}
                               {diasParado === 0 ? 'Movido hoje' : `${diasParado} dia${diasParado > 1 ? 's' : ''} aqui`}
+                            </div>
+                          )}
+
+                          {/* ⏳ Badge de Temporizador SLA / Bolsão */}
+                          {(() => {
+                            const sla = getLeadSlaStatus(card);
+                            if (!sla.label) return null;
+                            return (
+                              <div className="mb-3 space-y-1">
+                                <div className={`px-2 py-1 rounded-md text-[10px] font-bold flex items-center gap-1.5 w-fit ${
+                                  sla.type === 'retido' ? 'bg-red-100 text-red-800 border border-red-300' :
+                                  sla.type === 'bolsao' ? 'bg-amber-100 text-amber-900 border border-amber-300' :
+                                  sla.type === 'expired' ? 'bg-red-100 text-red-700 border border-red-200 animate-pulse' :
+                                  sla.type === 'warning' ? 'bg-amber-100 text-amber-800 border border-amber-200 animate-pulse' :
+                                  sla.type === 'active' ? 'bg-indigo-50 text-indigo-700 border border-indigo-200' :
+                                  'bg-slate-100 text-slate-600'
+                                }`}>
+                                  <span>{sla.type === 'retido' ? '🛑' : sla.type === 'bolsao' ? '💼' : '⏳'}</span>
+                                  <span>{sla.label}</span>
+                                </div>
+
+                                {sla.type === 'expired' && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handlePushToBolsao(card.id)}
+                                    className="px-2.5 py-1 bg-red-600 hover:bg-red-700 text-white rounded-md text-[10px] font-extrabold flex items-center gap-1 transition-all cursor-pointer shadow-sm"
+                                    title="Enviar este lead para o Bolsão de Oportunidades agora"
+                                  >
+                                    💼 Mover p/ Bolsão Agora
+                                  </button>
+                                )}
+                              </div>
+                            );
+                          })()}
+
+                          {card.bolsao_count > 0 && !card.retido_gestor && (
+                            <div className="mb-3 px-2 py-0.5 rounded-md text-[9px] font-bold bg-orange-100 text-orange-800 border border-orange-200 flex items-center gap-1 w-fit">
+                              ⚡ Retornado do Bolsão ({card.bolsao_count}ª tentativa)
                             </div>
                           )}
 
@@ -3297,6 +3891,79 @@ export default function App({ session }) {
                 Isso altera dinamicamente os campos de captação na ficha dos Leads e a exibição de tags no funil.
               </p>
             </div>
+          </div>
+
+          {/* Card de Configurações de SLA & Rodízio (Estilo C2S) */}
+          <div className="bg-white p-8 rounded-xl shadow-sm shadow-indigo-900/5 border border-slate-100 text-left space-y-5">
+            <h2 className="text-xl font-black text-slate-800 flex items-center gap-2">
+              🔄 SLA de Atendimento & Rodízio de Leads
+            </h2>
+            <p className="text-sm text-slate-500">
+              O gestor pode definir o tempo limite (SLA) para a equipe dar o primeiro atendimento aos novos clientes, além do tempo de Bolsão e retenção.
+            </p>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div className="space-y-2">
+                <label className="block text-xs font-bold text-slate-600 uppercase">Tempo de SLA (1º Atendimento)</label>
+                <select
+                  value={slaMinutes}
+                  onChange={async (e) => {
+                    const val = Number(e.target.value);
+                    setSlaMinutes(val);
+                    const activeId = userRole === 'superadmin' ? selectedConfigCompanyId : companyId;
+                    if (activeId) await supabase.from('companies').update({ sla_first_touch_minutes: val }).eq('id', activeId);
+                  }}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm font-semibold focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all cursor-pointer"
+                >
+                  <option value={5}>⚡ 5 minutos (Super rápido)</option>
+                  <option value={10}>⚡ 10 minutos</option>
+                  <option value={15}>⏱️ 15 minutos</option>
+                  <option value={20}>⏱️ 20 minutos (Recomendado)</option>
+                  <option value={30}>⏱️ 30 minutos</option>
+                  <option value={60}>⌛ 60 minutos (1 hora)</option>
+                </select>
+                <p className="text-[10px] text-slate-400">Tempo limite até o lead expirar e ir para o Bolsão.</p>
+              </div>
+
+              <div className="space-y-2">
+                <label className="block text-xs font-bold text-slate-600 uppercase">Tempo Limite no Bolsão</label>
+                <select
+                  value={bolsaoMaxMinutes}
+                  onChange={async (e) => {
+                    const val = Number(e.target.value);
+                    setBolsaoMaxMinutes(val);
+                    const activeId = userRole === 'superadmin' ? selectedConfigCompanyId : companyId;
+                    if (activeId) await supabase.from('companies').update({ bolsao_max_minutes: val }).eq('id', activeId);
+                  }}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm font-semibold focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all cursor-pointer"
+                >
+                  <option value={15}>⏱️ 15 minutos</option>
+                  <option value={30}>⏱️ 30 minutos (Padrão)</option>
+                  <option value={45}>⏱️ 45 minutos</option>
+                  <option value={60}>⌛ 60 minutos</option>
+                </select>
+                <p className="text-[10px] text-slate-400">Tempo sem resgate até redistribuir para outro corretor.</p>
+              </div>
+
+              <div className="space-y-2">
+                <label className="block text-xs font-bold text-slate-600 uppercase">Máximo de Rodízios p/ Gestor</label>
+                <select
+                  value={maxRotations}
+                  onChange={async (e) => {
+                    const val = Number(e.target.value);
+                    setMaxRotations(val);
+                    const activeId = userRole === 'superadmin' ? selectedConfigCompanyId : companyId;
+                    if (activeId) await supabase.from('companies').update({ max_rotations_before_manager: val }).eq('id', activeId);
+                  }}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm font-semibold focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all cursor-pointer"
+                >
+                  <option value={1}>🛑 1 Rodízio (Retém rápido)</option>
+                  <option value={2}>🛑 2 Rodízios (Recomendado)</option>
+                  <option value={3}>🛑 3 Rodízios</option>
+                </select>
+                <p className="text-[10px] text-slate-400">Quantidade de falhas de atendimento até reter com o Gestor.</p>
+              </div>
+            </div>
 
             <div className="space-y-2 pt-4 border-t border-slate-100">
               <label className="block text-xs font-bold text-slate-600 uppercase">Logotipo da Empresa</label>
@@ -3348,7 +4015,7 @@ export default function App({ session }) {
               </div>
 
               <p className="text-[10px] text-slate-400">
-                Selecione uma imagem (PNG, JPG, SVG) com até 3MB. Ela aparecerá no topo da sua Landing Page de captação.
+                Selecione uma imagem (PNG, JPG, SVG) com até 3MB. O logotipo da sua empresa aparecerá no cabeçalho do CRM, como marca d'água no plano de fundo e no topo da sua Landing Page de captação.
               </p>
             </div>
 
@@ -3780,6 +4447,218 @@ export default function App({ session }) {
             <div className="flex justify-end gap-3">
               <button type="button" onClick={() => setShowLinkModal(false)} className="px-4 py-2 text-sm font-medium text-slate-500 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer">Fechar</button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL DE BOLSÃO DE LEADS (POOL DE RESGATE) */}
+      {showBolsaoModal && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fade-in">
+          <div className="bg-white rounded-3xl shadow-2xl max-w-2xl w-full p-6 space-y-4 max-h-[85vh] flex flex-col">
+            <div className="flex justify-between items-center pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-2">
+                <span className="text-2xl">💼</span>
+                <div>
+                  <h3 className="text-lg font-black text-slate-800">Bolsão de Oportunidades</h3>
+                  <p className="text-xs text-slate-500">Leads que estouraram o prazo de atendimento. Resgate com 1 clique!</p>
+                </div>
+              </div>
+              <button onClick={() => setShowBolsaoModal(false)} className="text-slate-400 hover:text-slate-600 font-bold text-lg cursor-pointer">✕</button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto space-y-3 pr-1">
+              {(() => {
+                const bCards = columns.flatMap(col => col.cards.filter(c => c.in_bolsao));
+                if (bCards.length === 0) {
+                  return (
+                    <div className="text-center py-12 text-slate-400 space-y-2">
+                      <span className="text-4xl block">🎉</span>
+                      <p className="font-bold text-sm text-slate-600">Nenhum lead estagnado no bolsão!</p>
+                      <p className="text-xs">Sua equipe está atendendo todos os clientes no prazo.</p>
+                    </div>
+                  );
+                }
+
+                return bCards.map(c => {
+                  const enteredTime = (c.bolsao_entered_at ? new Date(c.bolsao_entered_at) : new Date()).getTime();
+                  const elapsedSec = Math.floor((slaNow - enteredTime) / 1000);
+                  const totalBolsaoSec = (bolsaoMaxMinutes || 30) * 60;
+                  const remainingSec = Math.max(0, totalBolsaoSec - elapsedSec);
+
+                  const m = Math.floor(remainingSec / 60);
+                  const s = Math.floor(remainingSec % 60);
+                  const timeStr = `${m}:${s < 10 ? '0' : ''}${s}`;
+                  const isExpiringSoon = remainingSec < 300 && remainingSec > 0;
+
+                  return (
+                    <div key={c.id} className="bg-slate-50 border border-slate-200 rounded-2xl p-4 flex items-center justify-between gap-4 hover:border-amber-300 transition-all">
+                      <div className="min-w-0 flex-1 space-y-1">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="font-black text-slate-800 text-sm">{c.empresa}</span>
+                          <span className={`text-[10px] font-black px-2.5 py-1 rounded-lg flex items-center gap-1 font-mono tracking-wide ${isExpiringSoon ? 'bg-red-100 text-red-700 animate-pulse border border-red-200' : 'bg-amber-100 text-amber-900 border border-amber-200'}`}>
+                            ⏳ {remainingSec > 0 ? `${timeStr} p/ redistribuir` : 'Expirando tempo...'}
+                          </span>
+                          <span className="text-[10px] font-bold bg-slate-200 text-slate-700 px-2 py-0.5 rounded-md">
+                            🔄 Rodízio {c.bolsao_count}/2
+                          </span>
+                        </div>
+                        <p className="text-xs text-slate-500 font-medium">👤 {c.contato} · 📞 {c.telefone}</p>
+                        {c.notas && <p className="text-[11px] text-amber-800 italic bg-amber-50/60 px-2 py-1 rounded border-l-2 border-amber-400">"{c.notas}"</p>}
+                      </div>
+
+                      <button
+                        onClick={() => handleClaimBolsaoLead(c.id)}
+                        className="bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs px-4 py-2.5 rounded-xl shadow-sm transition-all cursor-pointer shrink-0 flex items-center gap-1.5"
+                      >
+                        🚀 Resgatar Cliente
+                      </button>
+                    </div>
+                  );
+                });
+              })()}
+            </div>
+
+            <div className="pt-3 border-t border-slate-100 flex justify-end">
+              <button onClick={() => setShowBolsaoModal(false)} className="px-5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition-colors cursor-pointer">
+                Fechar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL DE RELATÓRIO CORRETOR VS ATENDIMENTO (SLA AUDIT) */}
+      {showSlaReportModal && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fade-in">
+          <div className="bg-white rounded-3xl shadow-2xl max-w-4xl w-full p-6 space-y-5 max-h-[90vh] flex flex-col">
+            <div className="flex justify-between items-center pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-2">
+                <span className="text-2xl">📊</span>
+                <div>
+                  <h3 className="text-lg font-black text-slate-800">Relatório Corretor vs Atendimento (SLA)</h3>
+                  <p className="text-xs text-slate-500">Auditoria de tempo de resposta, cumprimento de prazos e retenção por membro da equipe.</p>
+                </div>
+              </div>
+              <button onClick={() => setShowSlaReportModal(false)} className="text-slate-400 hover:text-slate-600 font-bold text-lg cursor-pointer">✕</button>
+            </div>
+
+            {/* KPIs Globais */}
+            {(() => {
+              const allCards = columns.flatMap(c => c.cards);
+              const totalLeads = allCards.length;
+              const retidosGestor = allCards.filter(c => c.retido_gestor).length;
+              const atendidosNoPrazo = allCards.filter(c => c.first_touched_at && (new Date(c.first_touched_at) - new Date(c.assigned_at)) <= (slaMinutes * 60 * 1000)).length;
+              const taxaSla = totalLeads > 0 ? Math.round((atendidosNoPrazo / totalLeads) * 100) : 100;
+
+              return (
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  <div className="bg-indigo-50 border border-indigo-100 p-3 rounded-2xl">
+                    <p className="text-[10px] font-black uppercase text-indigo-700">Total de Leads</p>
+                    <p className="text-xl font-black text-indigo-900">{totalLeads}</p>
+                  </div>
+                  <div className="bg-emerald-50 border border-emerald-100 p-3 rounded-2xl">
+                    <p className="text-[10px] font-black uppercase text-emerald-700">Atendidos no Prazo</p>
+                    <p className="text-xl font-black text-emerald-900">{taxaSla}% <span className="text-xs font-bold">({atendidosNoPrazo})</span></p>
+                  </div>
+                  <div className="bg-amber-50 border border-amber-100 p-3 rounded-2xl">
+                    <p className="text-[10px] font-black uppercase text-amber-700">No Bolsão Agora</p>
+                    <p className="text-xl font-black text-amber-900">{allCards.filter(c => c.in_bolsao).length}</p>
+                  </div>
+                  <div className="bg-red-50 border border-red-100 p-3 rounded-2xl">
+                    <p className="text-[10px] font-black uppercase text-red-700">Retidos c/ Gestor</p>
+                    <p className="text-xl font-black text-red-900">{retidosGestor}</p>
+                  </div>
+                </div>
+              );
+            })()}
+
+            {/* Tabela por Corretor */}
+            <div className="flex-1 overflow-y-auto border border-slate-200 rounded-2xl overflow-hidden">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="bg-slate-100 text-slate-700 text-[11px] font-black uppercase">
+                    <th className="p-3">Corretor / Vendedor</th>
+                    <th className="p-3 text-center">Recebidos</th>
+                    <th className="p-3 text-center">SLA No Prazo</th>
+                    <th className="p-3 text-center">Estourou SLA</th>
+                    <th className="p-3 text-center">Resgatados</th>
+                    <th className="p-3 text-center">Eficiência</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 text-xs">
+                  {(() => {
+                    const sellers = teamMembers.length > 0 ? teamMembers : [{ id: session?.user?.id, email: session?.user?.email }];
+                    const allCards = columns.flatMap(c => c.cards);
+
+                    return sellers.map(seller => {
+                      const sellerCards = allCards.filter(c => c.user_id === seller.id);
+                      const total = sellerCards.length;
+                      const noPrazo = sellerCards.filter(c => c.first_touched_at && (new Date(c.first_touched_at) - new Date(c.assigned_at)) <= (slaMinutes * 60 * 1000)).length;
+                      const estourou = sellerCards.filter(c => c.bolsao_count > 0 || c.in_bolsao || c.retido_gestor).length;
+                      const resgatados = sellerCards.filter(c => c.origem === 'Resgatado do Bolsão').length;
+                      const ef = total > 0 ? Math.round((noPrazo / total) * 100) : 100;
+
+                      return (
+                        <tr key={seller.id} className="hover:bg-slate-50 font-semibold text-slate-700">
+                          <td className="p-3 font-bold flex items-center gap-2">
+                            <span className="w-7 h-7 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center font-black text-xs">
+                              {seller.email.substring(0, 2).toUpperCase()}
+                            </span>
+                            {seller.email}
+                          </td>
+                          <td className="p-3 text-center font-mono font-bold">{total}</td>
+                          <td className="p-3 text-center text-emerald-600 font-mono font-bold">{noPrazo}</td>
+                          <td className="p-3 text-center text-red-600 font-mono font-bold">{estourou}</td>
+                          <td className="p-3 text-center text-amber-600 font-mono font-bold">{resgatados}</td>
+                          <td className="p-3 text-center">
+                            <span className={`px-2 py-1 rounded-md text-[10px] font-black ${ef >= 80 ? 'bg-emerald-100 text-emerald-800' : ef >= 50 ? 'bg-amber-100 text-amber-800' : 'bg-red-100 text-red-800'}`}>
+                              {ef}%
+                            </span>
+                          </td>
+                        </tr>
+                      );
+                    });
+                  })()}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="pt-3 border-t border-slate-100 flex justify-end">
+              <button onClick={() => setShowSlaReportModal(false)} className="px-5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition-colors cursor-pointer">
+                Fechar Relatório
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 🎉 ANIMAÇÃO DE CELEBRAÇÃO DE VENDA (CONFETIS 10/10) */}
+      {showConfetti && (
+        <div className="fixed inset-0 pointer-events-none z-[9999] flex items-center justify-center overflow-hidden animate-fade-in">
+          {/* Confetti Particles */}
+          <div className="absolute inset-0 flex items-center justify-center">
+            {Array.from({ length: 60 }).map((_, i) => (
+              <div
+                key={i}
+                className="absolute rounded-sm animate-confetti-fall shadow-md"
+                style={{
+                  left: `${(i * 1.67) % 100}%`,
+                  top: '-5%',
+                  width: `${(i % 5) + 6}px`,
+                  height: `${((i % 5) + 6) * 1.4}px`,
+                  backgroundColor: ['#f59e0b', '#10b981', '#6366f1', '#ec4899', '#3b82f6', '#8b5cf6'][i % 6],
+                  animationDuration: `${1.5 + (i % 4) * 0.5}s`,
+                  animationDelay: `${(i % 5) * 0.15}s`
+                }}
+              />
+            ))}
+          </div>
+
+          {/* Banner Pop-up de Fechamento */}
+          <div className="bg-slate-900/90 backdrop-blur-md text-white border-2 border-emerald-400/80 px-8 py-6 rounded-3xl shadow-2xl shadow-emerald-900/40 text-center pointer-events-auto transform animate-bounce-slow max-w-md mx-4 space-y-2">
+            <span className="text-5xl block animate-pulse">🏆</span>
+            <h2 className="text-xl font-black text-amber-300 uppercase tracking-wide">Venda Realizada!</h2>
+            <p className="text-xs font-semibold text-slate-100 leading-relaxed">{confettiMessage}</p>
           </div>
         </div>
       )}

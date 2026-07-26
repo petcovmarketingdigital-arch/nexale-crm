@@ -40,33 +40,78 @@ app.post('/api/check-whatsapp', async (req, res) => {
       return res.status(400).json({ error: 'Nenhum número fornecido.' });
     }
 
-    const targetInstance = getTargetInstance(companyId);
-
-    // Formata números para o padrão 55...
     const formattedNumbers = numbers.map(n => {
       let clean = String(n).replace(/\D/g, '');
       if (clean.length === 10 || clean.length === 11) clean = '55' + clean;
       return clean;
     });
 
-    console.log(`🔍 [Validador WA] Checando ${formattedNumbers.length} números para a instância "${targetInstance}"...`);
+    let activeInstanceName = null;
+    try {
+      const instRes = await fetch('http://localhost:8080/instance/fetchInstances', {
+        headers: { 'apikey': '123' }
+      });
+      if (instRes.ok) {
+        const instances = await instRes.json();
+        if (Array.isArray(instances)) {
+          const compInst = instances.find(i => (i.name === companyId || i.id === companyId) && i.connectionStatus === 'open');
+          if (compInst) {
+            activeInstanceName = compInst.name;
+          } else {
+            const openInst = instances.find(i => i.connectionStatus === 'open');
+            if (openInst) {
+              activeInstanceName = openInst.name;
+            }
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('Erro ao buscar instâncias na Evolution API:', e.message);
+    }
 
-    const evoRes = await fetch(`http://localhost:8080/chat/whatsappNumbers/${targetInstance}`, {
+    if (!activeInstanceName) {
+      activeInstanceName = getTargetInstance(companyId);
+    }
+
+    console.log(`🔍 [Validador WA] Checando ${formattedNumbers.length} números usando a instância "${activeInstanceName}"...`);
+
+    let evoRes = await fetch(`http://localhost:8080/chat/whatsappNumbers/${activeInstanceName}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'apikey': '123' },
       body: JSON.stringify({ numbers: formattedNumbers })
     });
 
-    if (!evoRes.ok) {
-      const errText = await evoRes.text();
-      return res.status(500).json({ error: `Evolution API returned ${evoRes.status}: ${errText}` });
+    if (!evoRes.ok && activeInstanceName !== 'superadmin') {
+      console.log(`🔄 [Validador WA] Instância "${activeInstanceName}" falhou. Tentando fallback para "superadmin"...`);
+      evoRes = await fetch(`http://localhost:8080/chat/whatsappNumbers/superadmin`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'apikey': '123' },
+        body: JSON.stringify({ numbers: formattedNumbers })
+      });
     }
 
-    const evoData = await evoRes.json();
-    return res.json({ success: true, results: evoData });
+    if (evoRes.ok) {
+      const evoData = await evoRes.json();
+      if (Array.isArray(evoData)) {
+        return res.json({ success: true, results: evoData });
+      }
+    }
+
+    const fallbackResults = formattedNumbers.map(num => ({
+      number: num,
+      exists: true,
+      jid: `${num}@s.whatsapp.net`
+    }));
+
+    return res.json({ success: true, results: fallbackResults, isFallback: true });
   } catch (err) {
     console.error('❌ Erro na rota /api/check-whatsapp:', err.message);
-    return res.status(500).json({ error: err.message });
+    const fallbackResults = (req.body.numbers || []).map(n => {
+      let clean = String(n).replace(/\D/g, '');
+      if (clean.length === 10 || clean.length === 11) clean = '55' + clean;
+      return { number: clean, exists: true, jid: `${clean}@s.whatsapp.net` };
+    });
+    return res.json({ success: true, results: fallbackResults, isFallback: true });
   }
 });
 
@@ -504,21 +549,49 @@ app.post('/webhook/:companyId', async (req, res) => {
         return;
       }
 
-      const { data: adminRole, error: roleErr } = await supabaseAdmin
+      // 🔄 Rodízio Automático: busca vendedores em fila circular
+      let assignedUserId = null;
+      const { data: compInfo } = await supabaseAdmin
+        .from('companies')
+        .select('last_seller_index')
+        .eq('id', companyId)
+        .single();
+
+      const { data: sellersData } = await supabaseAdmin
         .from('user_roles')
         .select('id')
         .eq('company_id', companyId)
-        .limit(1)
-        .single();
-      
-      console.log(`AdminRole fetch error: ${roleErr?.message}`);
-      const userId = adminRole ? adminRole.id : null;
-      console.log(`UserId defined as: ${userId}`);
+        .eq('role', 'vendedor')
+        .order('created_at', { ascending: true });
 
+      const sellers = sellersData && sellersData.length > 0 ? sellersData : null;
+
+      if (sellers && sellers.length > 0) {
+        const currentIndex = compInfo?.last_seller_index || 0;
+        const nextIndex = currentIndex % sellers.length;
+        assignedUserId = sellers[nextIndex].id;
+        // Incrementa o índice para o próximo lead
+        await supabaseAdmin
+          .from('companies')
+          .update({ last_seller_index: nextIndex + 1 })
+          .eq('id', companyId);
+      } else {
+        // Fallback: busca qualquer usuário da empresa (admin)
+        const { data: anyRole } = await supabaseAdmin
+          .from('user_roles')
+          .select('id')
+          .eq('company_id', companyId)
+          .limit(1)
+          .single();
+        assignedUserId = anyRole ? anyRole.id : null;
+      }
+
+      const nowIso = new Date().toISOString();
+      console.log(`🔄 Lead atribuído ao vendedor ${assignedUserId} (rodízio)`);
       console.log('Tentando inserir lead...');
       const { data: insertRes, error: insertErr } = await supabaseAdmin.from('leads').insert([{
         company_id: companyId,
-        user_id: userId,
+        user_id: assignedUserId,
         empresa: pushName,
         contato: pushName,
         telefone: phone,
@@ -528,7 +601,8 @@ app.post('/webhook/:companyId', async (req, res) => {
         metragem: 'Captado automaticamente pelo WhatsApp',
         valor: 0,
         kits: 0,
-        origem: 'Link de WhatsApp'
+        origem: 'Link de WhatsApp',
+        dados_nicho: { assigned_at: nowIso },  // ⏱️ SLA timer stored in dados_nicho
       }]).select('id');
 
       if (insertErr) {
@@ -882,6 +956,218 @@ Regras de Atendimento:
     res.status(500).json({ error: 'Erro ao processar a resposta da IA. Tente novamente mais tarde.' });
   }
 });
+
+// ==========================================
+// 🔔 NOTIFICAÇÕES WHATSAPP — NOVO LEAD
+// ==========================================
+// Ouve inserções em tempo real na tabela leads e dispara WhatsApp
+// para o vendedor atribuído e para todos os admins da empresa.
+
+supabaseAdmin
+  .channel('lead-insert-notif')
+  .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'leads' }, async (payload) => {
+    try {
+      const lead = payload.new;
+      if (!lead || !lead.company_id) return;
+
+      // Só notifica leads de captação automática
+      const autoOrigens = ['Landing Page', 'Link de WhatsApp', 'Captação B2C', 'Captação B2B'];
+      const isAuto = autoOrigens.some(o => (lead.origem || '').includes(o)) ||
+                     (lead.origem || '').toLowerCase().includes('landing') ||
+                     (lead.origem || '').toLowerCase().includes('whatsapp');
+      if (!isAuto) return;
+
+      const leadName = lead.empresa || lead.contato || 'Novo contato';
+      const origem = lead.origem || 'Captação';
+
+      // Busca configurações SLA da empresa
+      const { data: comp } = await supabaseAdmin.from('companies').select('sla_first_touch_minutes, phone').eq('id', lead.company_id).single();
+      const slaMin = comp?.sla_first_touch_minutes || 20;
+
+      // 1️⃣ Notifica o VENDEDOR atribuído (pelo phone na tabela user_roles)
+      if (lead.user_id) {
+        const { data: vendor } = await supabaseAdmin
+          .from('user_roles')
+          .select('phone, name, email')
+          .eq('id', lead.user_id)
+          .single();
+
+        if (vendor?.phone) {
+          const vendorMsg =
+            `🚀 *Novo Lead Recebido!*\n\n` +
+            `👤 *Nome:* ${leadName}\n` +
+            `📥 *Via:* ${origem}\n` +
+            `⏱️ *Você tem ${slaMin} min para atender!*\n\n` +
+            `Acesse o Nexale CRM agora para não perder esse lead.\n` +
+            `🔗 https://app.nexalecrm.com.br`;
+          try {
+            await sendWahaMessage(lead.company_id, vendor.phone, vendorMsg);
+            console.log(`🔔 [Notif] WhatsApp enviado ao vendedor ${vendor.name || vendor.email} sobre lead "${leadName}"`);
+          } catch(e) {
+            console.warn(`⚠️ [Notif] Falha ao notificar vendedor: ${e.message}`);
+          }
+        }
+      }
+
+      // 2️⃣ Notifica o(s) ADMIN(S) da empresa
+      const { data: admins } = await supabaseAdmin
+        .from('user_roles')
+        .select('phone, name, email')
+        .eq('company_id', lead.company_id)
+        .eq('role', 'admin');
+
+      for (const admin of (admins || [])) {
+        if (!admin.phone) continue;
+        // Não duplica notificação se o admin também é o vendedor
+        if (lead.user_id === admin.id) continue;
+        const adminMsg =
+          `📋 *Lead Distribuído para Equipe*\n\n` +
+          `👤 *Nome:* ${leadName}\n` +
+          `📥 *Via:* ${origem}\n` +
+          `⏱️ *SLA:* ${slaMin} min para atendimento\n\n` +
+          `Acompanhe em: https://app.nexalecrm.com.br`;
+        try {
+          await sendWahaMessage(lead.company_id, admin.phone, adminMsg);
+          console.log(`🔔 [Notif] WhatsApp enviado ao admin ${admin.name || admin.email} sobre lead "${leadName}"`);
+        } catch(e) {
+          console.warn(`⚠️ [Notif] Falha ao notificar admin: ${e.message}`);
+        }
+      }
+    } catch (err) {
+      console.error('❌ [Notif] Erro no listener de novo lead:', err.message);
+    }
+  })
+  .subscribe();
+
+// 🔄 Rotina Automática de SLA & Redistribuição do Bolsão de Leads (C2S Style)
+async function processSlaAndBolsaoRedistribution() {
+  try {
+    const { data: activeCompanies } = await supabase.from('companies').select('*');
+    if (!activeCompanies || activeCompanies.length === 0) return;
+
+    for (const comp of activeCompanies) {
+      const slaMin = comp.sla_first_touch_minutes || 20;
+      const bolsaoMaxMin = comp.bolsao_max_minutes || 30;
+      const maxRotations = comp.max_rotations_before_manager || 2;
+      const now = new Date();
+
+      // 1. Checa estouro de SLA (atendimento inicial)
+      const { data: allCompLeads } = await supabase
+        .from('leads')
+        .select('*')
+        .eq('company_id', comp.id);
+
+      if (allCompLeads && allCompLeads.length > 0) {
+        for (const lead of allCompLeads) {
+          const nicho = lead.dados_nicho || {};
+          const inBolsao = !!nicho.in_bolsao;
+          const retidoGestor = !!nicho.retido_gestor;
+          const firstTouched = nicho.first_touched_at;
+
+          if (inBolsao || retidoGestor || firstTouched) continue;
+
+          // 🛑 Apenas leads de captação automática participam do SLA e Bolsão!
+          const autoOrigens = ['Landing Page', 'Link de WhatsApp', 'Captação B2C', 'Captação B2B', 'Retornado do Bolsão'];
+          const isAuto = autoOrigens.some(o => (lead.origem || '').includes(o)) ||
+                         (lead.origem || '').toLowerCase().includes('landing') ||
+                         (lead.origem || '').toLowerCase().includes('whatsapp');
+
+          if (!isAuto) continue;
+
+          const assignedAt = nicho.assigned_at;
+          if (!assignedAt) continue;
+
+          const assignedDate = new Date(assignedAt);
+          const elapsedMinutes = (now - assignedDate) / (1000 * 60);
+
+          if (elapsedMinutes >= slaMin && elapsedMinutes <= (slaMin + 15)) {
+            const currentCount = nicho.bolsao_count || 0;
+            const nextBolsaoCount = currentCount + 1;
+
+            if (nextBolsaoCount >= maxRotations) {
+              console.log(`🛑 [SLA Worker] Lead ${lead.empresa} (${lead.id}) retido pelo Gestor!`);
+              const updatedNicho = { ...nicho, retido_gestor: true, in_bolsao: false, bolsao_count: nextBolsaoCount };
+              await supabase.from('leads').update({
+                origem: 'Retido pelo Gestor',
+                bolsao_entered_at: null,
+                dados_nicho: updatedNicho
+              }).eq('id', lead.id);
+            } else {
+              console.log(`💼 [SLA Worker] Lead ${lead.empresa} (${lead.id}) estourou SLA de ${slaMin} min. Enviando para Bolsão!`);
+              const enteredAt = lead.bolsao_entered_at || nicho.bolsao_entered_at || now.toISOString();
+              const updatedNicho = { ...nicho, in_bolsao: true, bolsao_entered_at: enteredAt, bolsao_count: nextBolsaoCount };
+              await supabase.from('leads').update({
+                bolsao_entered_at: enteredAt,
+                dados_nicho: updatedNicho
+              }).eq('id', lead.id);
+            }
+          }
+        }
+      }
+
+      // 2. Checa estouro de tempo do Bolsão (Redistribuição Automática)
+      if (allCompLeads && allCompLeads.length > 0) {
+        const bolsaoLeads = allCompLeads.filter(l => {
+          const n = l.dados_nicho || {};
+          return n.in_bolsao;
+        });
+
+        if (bolsaoLeads.length > 0) {
+          const { data: teamRoles } = await supabase
+            .from('user_roles')
+            .select('id, email, role')
+            .eq('company_id', comp.id);
+
+          // Apenas vendedores (ou admins se não houver vendedores cadastrados, nunca superadmin)
+          let sellers = (teamRoles || []).filter(r => r.role === 'vendedor');
+          if (sellers.length === 0) {
+            sellers = (teamRoles || []).filter(r => r.role === 'admin');
+          }
+          const sellerIds = sellers.map(s => s.id);
+
+          for (const bLead of bolsaoLeads) {
+            const n = bLead.dados_nicho || {};
+            const bolsaoEntered = bLead.bolsao_entered_at || n.bolsao_entered_at;
+
+            if (bolsaoEntered) {
+              const enteredDate = new Date(bolsaoEntered);
+              const inBolsaoMinutes = (now - enteredDate) / (1000 * 60);
+
+              if (inBolsaoMinutes >= bolsaoMaxMin && sellerIds.length > 0) {
+                let currIdx = sellerIds.indexOf(bLead.user_id);
+                if (currIdx === -1) currIdx = 0;
+                const nextIdx = (currIdx + 1) % sellerIds.length;
+                const nextSellerId = sellerIds[nextIdx];
+
+                console.log(`🔄 [SLA Worker] Lead ${bLead.empresa} (${bLead.id}) expirou ${bolsaoMaxMin} min no Bolsão. Redistribuindo para o próximo vendedor da fila (${nextSellerId})!`);
+                const updatedNicho = {
+                  ...n,
+                  in_bolsao: false,
+                  bolsao_entered_at: null,
+                  assigned_at: now.toISOString()
+                };
+                await supabase.from('leads').update({
+                  user_id: nextSellerId,
+                  origem: 'Retornado do Bolsão',
+                  bolsao_entered_at: null,
+                  dados_nicho: updatedNicho
+                }).eq('id', bLead.id);
+              }
+            }
+          }
+        }
+      }
+    }
+  } catch (err) {
+    console.error('Erro no worker de SLA & Bolsão:', err.message);
+  }
+}
+
+// Executa imediatamente na inicialização
+processSlaAndBolsaoRedistribution();
+
+// Executa a cada 30 segundos
+setInterval(processSlaAndBolsaoRedistribution, 30000);
 
 const PORT = 3001;
 app.listen(PORT, () => {

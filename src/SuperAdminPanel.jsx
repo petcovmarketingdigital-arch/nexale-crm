@@ -49,6 +49,58 @@ export default function SuperAdminPanel() {
     setLoading(false);
   };
 
+  const handleSetTrialEnd = async (companyId) => {
+    const newDate = editDates[companyId];
+    if (!newDate) return;
+
+    const dateObj = new Date(newDate + 'T23:59:59.000Z');
+
+    const { error } = await supabase
+      .from('companies')
+      .update({ trial_ends_at: dateObj.toISOString() })
+      .eq('id', companyId);
+
+    if (error) {
+      console.error('Erro ao atualizar data de vencimento:', error);
+      alert('Erro ao atualizar data: ' + error.message);
+    } else {
+      alert('✅ Data de vencimento atualizada com sucesso!');
+      fetchCompanies();
+    }
+  };
+
+  const handleUpdateStatus = async (companyId, status) => {
+    const { error } = await supabase
+      .from('companies')
+      .update({ subscription_status: status })
+      .eq('id', companyId);
+
+    if (error) {
+      console.error('Erro ao atualizar status da assinatura:', error);
+      alert('Erro ao atualizar status: ' + error.message);
+    } else {
+      alert('✅ Status da empresa atualizado com sucesso!');
+      fetchCompanies();
+    }
+  };
+
+  const handleDeleteCompany = async (companyId, name) => {
+    if (!window.confirm(`⚠️ Tem certeza de que deseja EXCLUIR a empresa "${name}"? Esta ação removerá a empresa do CRM.`)) return;
+
+    const { error } = await supabase
+      .from('companies')
+      .delete()
+      .eq('id', companyId);
+
+    if (error) {
+      console.error('Erro ao excluir empresa:', error);
+      alert('Erro ao excluir empresa: ' + error.message);
+    } else {
+      alert('✅ Empresa excluída com sucesso!');
+      fetchCompanies();
+    }
+  };
+
   const fetchTutorials = async () => {
     setLoading(true);
     const { data, error } = await supabase
