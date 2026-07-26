@@ -1085,9 +1085,20 @@ async function processSlaAndBolsaoRedistribution() {
             const nextBolsaoCount = currentCount + 1;
 
             if (nextBolsaoCount >= maxRotations) {
-              console.log(`🛑 [SLA Worker] Lead ${lead.empresa} (${lead.id}) retido pelo Gestor!`);
+              console.log(`🛑 [SLA Worker] Lead ${lead.empresa} (${lead.id}) retido pelo Gestor! Reatribuindo para o Gestor.`);
+              const { data: adminRole } = await supabaseAdmin
+                .from('user_roles')
+                .select('id')
+                .eq('company_id', comp.id)
+                .eq('role', 'admin')
+                .limit(1)
+                .single();
+
+              const managerUserId = adminRole ? adminRole.id : lead.user_id;
+
               const updatedNicho = { ...nicho, retido_gestor: true, in_bolsao: false, bolsao_count: nextBolsaoCount };
               await supabaseAdmin.from('leads').update({
+                user_id: managerUserId,
                 origem: 'Retido pelo Gestor',
                 bolsao_entered_at: null,
                 dados_nicho: updatedNicho
