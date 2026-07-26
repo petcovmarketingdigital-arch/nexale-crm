@@ -1708,24 +1708,42 @@ export default function App({ session }) {
         return clean;
       });
 
-      let instanceToUse = (userRole === 'superadmin' || !companyId) ? 'superadmin' : companyId;
-      
-      let res = await fetch(`/evolution/chat/whatsappNumbers/${instanceToUse}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'apikey': '123' },
-        body: JSON.stringify({ numbers: formattedNumbers })
-      });
+      const activeCompId = (userRole === 'superadmin' || !companyId) ? 'superadmin' : companyId;
 
-      let data = await res.json().catch(() => null);
+      let data = null;
+      try {
+        const workerRes = await fetch('/api/check-whatsapp', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ companyId: activeCompId, numbers: formattedNumbers })
+        });
+        if (workerRes.ok) {
+          const workerData = await workerRes.json();
+          if (workerData.success && Array.isArray(workerData.results)) {
+            data = workerData.results;
+          }
+        }
+      } catch (e) {
+        console.warn('Backend check-whatsapp failed, trying direct evolution route...', e);
+      }
 
-      if (!Array.isArray(data) && instanceToUse !== 'superadmin') {
-        instanceToUse = 'superadmin';
-        res = await fetch(`/evolution/chat/whatsappNumbers/superadmin`, {
+      if (!data) {
+        let instanceToUse = activeCompId;
+        let res = await fetch(`/evolution/chat/whatsappNumbers/${instanceToUse}`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'apikey': '123' },
           body: JSON.stringify({ numbers: formattedNumbers })
         });
         data = await res.json().catch(() => null);
+
+        if (!Array.isArray(data) && instanceToUse !== 'superadmin') {
+          res = await fetch(`/evolution/chat/whatsappNumbers/superadmin`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'apikey': '123' },
+            body: JSON.stringify({ numbers: formattedNumbers })
+          });
+          data = await res.json().catch(() => null);
+        }
       }
 
       if (Array.isArray(data)) {

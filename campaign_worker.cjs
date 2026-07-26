@@ -51,11 +51,20 @@ app.post('/api/check-whatsapp', async (req, res) => {
 
     console.log(`🔍 [Validador WA] Checando ${formattedNumbers.length} números para a instância "${targetInstance}"...`);
 
-    const evoRes = await fetch(`http://localhost:8080/chat/whatsappNumbers/${targetInstance}`, {
+    let evoRes = await fetch(`http://localhost:8080/chat/whatsappNumbers/${targetInstance}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'apikey': '123' },
       body: JSON.stringify({ numbers: formattedNumbers })
     });
+
+    if (!evoRes.ok && targetInstance !== 'superadmin') {
+      console.log(`🔄 [Validador WA] Instância "${targetInstance}" falhou. Tentando fallback para "superadmin"...`);
+      evoRes = await fetch(`http://localhost:8080/chat/whatsappNumbers/superadmin`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'apikey': '123' },
+        body: JSON.stringify({ numbers: formattedNumbers })
+      });
+    }
 
     if (!evoRes.ok) {
       const errText = await evoRes.text();
