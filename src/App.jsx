@@ -758,7 +758,7 @@ export default function App({ session }) {
             dados_nicho: dbLead.dados_nicho || {},
             user_id: dbLead.user_id,
             assigned_at: dbLead.assigned_at || dbLead.dados_nicho?.assigned_at || (isAutoCapture ? dbLead.data_criacao : null),
-            first_touched_at: dbLead.first_touched_at || null,
+            first_touched_at: dbLead.first_touched_at || dbLead.dados_nicho?.first_touched_at || null,
             in_bolsao: !!dbLead.in_bolsao || !!dbLead.dados_nicho?.in_bolsao,
             bolsao_entered_at: dbLead.bolsao_entered_at || dbLead.dados_nicho?.bolsao_entered_at || null,
             bolsao_count: Number(dbLead.bolsao_count || dbLead.dados_nicho?.bolsao_count) || 0,
@@ -1625,15 +1625,6 @@ export default function App({ session }) {
   };
 
   const executeDrop = async (card, sourceColId, targetColId, reason = null) => {
-    // Atualiza visual imediatamente
-    setColumns(prev => prev.map(col => {
-      if (col.id === sourceColId) return { ...col, cards: col.cards.filter(c => c.id !== card.id) };
-      if (col.id === targetColId) return { ...col, cards: [{ ...card, coluna_id: targetColId }, ...col.cards] };
-      return col;
-    }));
-    setDraggedCard(null);
-
-    // Salva no banco
     const nowIso = new Date().toISOString();
     const existingNicho = card.dados_nicho || {};
     const firstTouchTime = card.first_touched_at || existingNicho.first_touched_at || nowIso;
@@ -1644,6 +1635,24 @@ export default function App({ session }) {
       bolsao_entered_at: null
     };
 
+    // Atualiza visual imediatamente (marcando o 1º atendimento como realizado)
+    setColumns(prev => prev.map(col => {
+      if (col.id === sourceColId) return { ...col, cards: col.cards.filter(c => c.id !== card.id) };
+      if (col.id === targetColId) return {
+        ...col,
+        cards: [{
+          ...card,
+          coluna_id: targetColId,
+          first_touched_at: firstTouchTime,
+          in_bolsao: false,
+          dados_nicho: updatedNicho
+        }, ...col.cards]
+      };
+      return col;
+    }));
+    setDraggedCard(null);
+
+    // Salva no banco
     const updateData = { 
       coluna_id: targetColId, 
       data_movimentacao: nowIso,
