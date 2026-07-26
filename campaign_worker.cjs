@@ -955,7 +955,7 @@ async function processSlaAndBolsaoRedistribution() {
           const assignedDate = new Date(lead.assigned_at);
           const elapsedMinutes = (now - assignedDate) / (1000 * 60);
 
-          if (elapsedMinutes >= slaMin) {
+          if (elapsedMinutes >= slaMin && elapsedMinutes <= (slaMin + 15)) {
             const nextBolsaoCount = (lead.bolsao_count || 0) + 1;
             if (nextBolsaoCount >= maxRotations) {
               // 🛑 2º Estouro -> Retido com o Gestor

@@ -493,12 +493,15 @@ export default function App({ session }) {
       setSlaNow(now);
 
       if (columns && columns.length > 0) {
+        const slaMin = slaMinutes || 20;
         columns.flatMap(col => col.cards).forEach(card => {
           if (!card.first_touched_at && !card.in_bolsao && !card.retido_gestor && card.assigned_at) {
             const assignedTime = new Date(card.assigned_at).getTime();
-            const elapsedSec = Math.floor((now - assignedTime) / 1000);
-            const totalSlaSec = (slaMinutes || 20) * 60;
-            if (totalSlaSec - elapsedSec <= 0) {
+            const elapsedMin = (now - assignedTime) / (1000 * 60);
+            
+            // SÓ envia para o Bolsão se o SLA estourou no ciclo recente (entre slaMin e slaMin + 15 min)
+            // Impede estritamente que leads antigos do histórico sejam enviados retroativamente!
+            if (elapsedMin >= slaMin && elapsedMin <= (slaMin + 15)) {
               handlePushToBolsao(card.id);
             }
           }
@@ -1559,8 +1562,16 @@ export default function App({ session }) {
     if (!card.assigned_at) return { type: 'normal', label: null };
     
     const assignedTime = new Date(card.assigned_at).getTime();
+    const elapsedMin = (slaNow - assignedTime) / (1000 * 60);
+    const slaMin = slaMinutes || 20;
+
+    // Leads do histórico antigos (> slaMin + 15 min) não mostram badge de SLA e não vão pro bolsão
+    if (elapsedMin > (slaMin + 15)) {
+      return { type: 'normal', label: null };
+    }
+
     const elapsedSec = Math.floor((slaNow - assignedTime) / 1000);
-    const totalSlaSec = (slaMinutes || 20) * 60;
+    const totalSlaSec = slaMin * 60;
     const remainingSec = totalSlaSec - elapsedSec;
 
     if (remainingSec <= 0) {
