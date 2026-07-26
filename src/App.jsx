@@ -1957,16 +1957,16 @@ export default function App({ session }) {
         </div>
       )}
 
-      {/* MARCA D'ÁGUA DA EMPRESA DO ASSINANTE NO PLANO DE FUNDO */}
+      {/* LOGO DA EMPRESA DO ASSINANTE NO PLANO DE FUNDO (COLORIDO E SOMBREADO) */}
       {companyLogoUrl && (
         <div 
           className="fixed inset-0 pointer-events-none z-0 flex items-center justify-center overflow-hidden transition-all duration-700 select-none"
-          style={{ opacity: 0.05 }}
+          style={{ opacity: 0.12 }}
         >
           <img 
             src={companyLogoUrl} 
-            alt="Marca D'água" 
-            className="max-w-[45vw] max-h-[45vh] object-contain filter grayscale contrast-125 select-none pointer-events-none" 
+            alt="Logo Fundo" 
+            className="max-w-[42vw] max-h-[42vh] object-contain drop-shadow-[0_25px_35px_rgba(0,0,0,0.18)] select-none pointer-events-none transform scale-105" 
           />
         </div>
       )}
