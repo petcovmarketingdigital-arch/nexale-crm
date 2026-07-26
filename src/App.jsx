@@ -4672,30 +4672,21 @@ export default function App({ session }) {
         <div className="fixed inset-0 pointer-events-none z-[9999] flex items-center justify-center overflow-hidden animate-fade-in">
           {/* Confetti Particles */}
           <div className="absolute inset-0 flex items-center justify-center">
-            {Array.from({ length: 65 }).map((_, i) => {
-              const bgColors = ['#f59e0b', '#10b981', '#6366f1', '#ec4899', '#3b82f6', '#8b5cf6', '#eab308'];
-              const randomBg = bgColors[i % bgColors.length];
-              const left = Math.random() * 100;
-              const animDelay = Math.random() * 0.8;
-              const animDuration = 1.8 + Math.random() * 1.5;
-              const size = 8 + Math.random() * 10;
-              return (
-                <div
-                  key={i}
-                  className="absolute rounded-sm animate-confetti-fall shadow-md"
-                  style={{
-                    left: `${left}%`,
-                    top: '-5%',
-                    width: `${size}px`,
-                    height: `${size * 1.4}px`,
-                    backgroundColor: randomBg,
-                    animationDuration: `${animDuration}s`,
-                    animationDelay: `${animDelay}s`,
-                    transform: `rotate(${Math.random() * 360}deg)`
-                  }}
-                />
-              );
-            })}
+            {Array.from({ length: 60 }).map((_, i) => (
+              <div
+                key={i}
+                className="absolute rounded-sm animate-confetti-fall shadow-md"
+                style={{
+                  left: `${(i * 1.67) % 100}%`,
+                  top: '-5%',
+                  width: `${(i % 5) + 6}px`,
+                  height: `${((i % 5) + 6) * 1.4}px`,
+                  backgroundColor: ['#f59e0b', '#10b981', '#6366f1', '#ec4899', '#3b82f6', '#8b5cf6'][i % 6],
+                  animationDuration: `${1.5 + (i % 4) * 0.5}s`,
+                  animationDelay: `${(i % 5) * 0.15}s`
+                }}
+              />
+            ))}
           </div>
 
           {/* Banner Pop-up de Fechamento */}
