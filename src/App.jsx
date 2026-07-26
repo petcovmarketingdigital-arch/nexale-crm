@@ -4574,6 +4574,37 @@ export default function App({ session }) {
         </div>
       )}
 
+      {/* 🎉 ANIMAÇÃO DE CELEBRAÇÃO DE VENDA (CONFETIS 10/10) */}
+      {showConfetti && (
+        <div className="fixed inset-0 pointer-events-none z-[9999] flex items-center justify-center overflow-hidden animate-fade-in">
+          {/* Confetti Particles */}
+          <div className="absolute inset-0 flex items-center justify-center">
+            {Array.from({ length: 60 }).map((_, i) => (
+              <div
+                key={i}
+                className="absolute rounded-sm animate-confetti-fall shadow-md"
+                style={{
+                  left: `${(i * 1.67) % 100}%`,
+                  top: '-5%',
+                  width: `${(i % 5) + 6}px`,
+                  height: `${((i % 5) + 6) * 1.4}px`,
+                  backgroundColor: ['#f59e0b', '#10b981', '#6366f1', '#ec4899', '#3b82f6', '#8b5cf6'][i % 6],
+                  animationDuration: `${1.5 + (i % 4) * 0.5}s`,
+                  animationDelay: `${(i % 5) * 0.15}s`
+                }}
+              />
+            ))}
+          </div>
+
+          {/* Banner Pop-up de Fechamento */}
+          <div className="bg-slate-900/90 backdrop-blur-md text-white border-2 border-emerald-400/80 px-8 py-6 rounded-3xl shadow-2xl shadow-emerald-900/40 text-center pointer-events-auto transform animate-bounce-slow max-w-md mx-4 space-y-2">
+            <span className="text-5xl block animate-pulse">🏆</span>
+            <h2 className="text-xl font-black text-amber-300 uppercase tracking-wide">Venda Realizada!</h2>
+            <p className="text-xs font-semibold text-slate-100 leading-relaxed">{confettiMessage}</p>
+          </div>
+        </div>
+      )}
+
       {/* ========================================== */}
       {/* WIDGET FLUTUANTE DE SAC COM IA (NEXA)       */}
       {/* ========================================== */}
@@ -4667,36 +4698,7 @@ export default function App({ session }) {
             </div>
           </div>
         )}
-      {/* 🎉 ANIMAÇÃO DE CELEBRAÇÃO DE VENDA (CONFETIS 10/10) */}
-      {showConfetti && (
-        <div className="fixed inset-0 pointer-events-none z-[9999] flex items-center justify-center overflow-hidden animate-fade-in">
-          {/* Confetti Particles */}
-          <div className="absolute inset-0 flex items-center justify-center">
-            {Array.from({ length: 60 }).map((_, i) => (
-              <div
-                key={i}
-                className="absolute rounded-sm animate-confetti-fall shadow-md"
-                style={{
-                  left: `${(i * 1.67) % 100}%`,
-                  top: '-5%',
-                  width: `${(i % 5) + 6}px`,
-                  height: `${((i % 5) + 6) * 1.4}px`,
-                  backgroundColor: ['#f59e0b', '#10b981', '#6366f1', '#ec4899', '#3b82f6', '#8b5cf6'][i % 6],
-                  animationDuration: `${1.5 + (i % 4) * 0.5}s`,
-                  animationDelay: `${(i % 5) * 0.15}s`
-                }}
-              />
-            ))}
-          </div>
-
-          {/* Banner Pop-up de Fechamento */}
-          <div className="bg-slate-900/90 backdrop-blur-md text-white border-2 border-emerald-400/80 px-8 py-6 rounded-3xl shadow-2xl shadow-emerald-900/40 text-center pointer-events-auto transform animate-bounce-slow max-w-md mx-4 space-y-2">
-            <span className="text-5xl block animate-pulse">🏆</span>
-            <h2 className="text-xl font-black text-amber-300 uppercase tracking-wide">Venda Realizada!</h2>
-            <p className="text-xs font-semibold text-slate-100 leading-relaxed">{confettiMessage}</p>
-          </div>
-        </div>
-      )}
+      </div>
 
     </div>
   );
