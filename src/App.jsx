@@ -539,48 +539,6 @@ export default function App({ session }) {
     }
   };
 
-  const handleClaimBolsaoLead = async (cardId) => {
-    try {
-      const nowIso = new Date().toISOString();
-      const card = columns.flatMap(col => col.cards).find(c => c.id === cardId);
-      if (!card) return;
-
-      const existingNicho = card.dados_nicho || {};
-      const updatedNicho = {
-        ...existingNicho,
-        in_bolsao: false,
-        bolsao_entered_at: null,
-        assigned_at: nowIso
-      };
-
-      const updatePayload = {
-        user_id: session.user.id,
-        in_bolsao: false,
-        origem: 'Resgatado do Bolsão',
-        dados_nicho: updatedNicho
-      };
-
-      await supabase.from('leads').update(updatePayload).eq('id', cardId);
-
-      setColumns(prevCols => prevCols.map(col => ({
-        ...col,
-        cards: col.cards.map(c => c.id === cardId ? {
-          ...c,
-          user_id: session.user.id,
-          in_bolsao: false,
-          bolsao_entered_at: null,
-          assigned_at: nowIso,
-          first_touched_at: null,
-          origem: 'Resgatado do Bolsão',
-          dados_nicho: updatedNicho
-        } : c)
-      })));
-      setShowBolsaoModal(false);
-    } catch (e) {
-      console.error('Erro ao resgatar lead:', e.message);
-    }
-  };
-
   useEffect(() => {
     const interval = setInterval(() => {
       const now = Date.now();
@@ -1734,13 +1692,22 @@ export default function App({ session }) {
   const handleClaimBolsaoLead = async (leadId) => {
     try {
       const nowIso = new Date().toISOString();
+      const card = (columns || []).flatMap(col => col?.cards || []).find(c => c.id === leadId);
+      const existingNicho = card?.dados_nicho || {};
+      const updatedNicho = {
+        ...existingNicho,
+        in_bolsao: false,
+        bolsao_entered_at: null,
+        assigned_at: nowIso
+      };
+
       const { error } = await supabase.from('leads').update({
         user_id: session.user.id,
         in_bolsao: false,
         retido_gestor: false,
-        assigned_at: nowIso,
         first_touched_at: null,
-        origem: 'Resgatado do Bolsão'
+        origem: 'Resgatado do Bolsão',
+        dados_nicho: updatedNicho
       }).eq('id', leadId);
 
       if (error) throw error;
