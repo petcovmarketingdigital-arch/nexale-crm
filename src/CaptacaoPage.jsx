@@ -228,8 +228,7 @@ export default function CaptacaoPage({ vendedorId }) {
           .from('user_roles')
           .select('id, role')
           .eq('company_id', companyId)
-          .eq('role', 'vendedor')
-          .order('created_at', { ascending: true });
+          .eq('role', 'vendedor');
 
         const sellerList = sellers && sellers.length > 0 ? sellers : null;
 
@@ -257,8 +256,7 @@ export default function CaptacaoPage({ vendedorId }) {
         coluna_id: 'leads',
         origem: 'Landing Page',
         status_amostra: 'Morno',
-        dados_nicho: nichoFields,
-        assigned_at: nowIso,  // ⏱️ Inicia o SLA timer
+        dados_nicho: { ...nichoFields, assigned_at: nowIso },  // SLA stored in dados_nicho
       });
 
       if (error) throw error;

@@ -602,7 +602,7 @@ app.post('/webhook/:companyId', async (req, res) => {
         valor: 0,
         kits: 0,
         origem: 'Link de WhatsApp',
-        assigned_at: nowIso,  // ⏱️ Inicia o SLA timer
+        dados_nicho: { assigned_at: nowIso },  // ⏱️ SLA timer stored in dados_nicho
       }]).select('id');
 
       if (insertErr) {
