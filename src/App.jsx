@@ -462,6 +462,10 @@ export default function App({ session }) {
   const [unreadCount, setUnreadCount] = useState(0);
   const knownLeadIdsRef = React.useRef(null); // null = primeira carga
 
+  // 🎉 Animação de Confetes para Venda Fechada
+  const [showConfetti, setShowConfetti] = useState(false);
+  const [confettiMessage, setConfettiMessage] = useState('');
+
   // Solicita permissão de notificação do navegador
   const requestNotifPermission = async () => {
     if ('Notification' in window && Notification.permission === 'default') {
@@ -1619,6 +1623,13 @@ export default function App({ session }) {
     const { error } = await supabase.from('leads').update(updateData).eq('id', card.id);
     if (error) { alert('Erro ao atualizar: ' + error.message); fetchLeads(); return; }
 
+    // 🎉 Dispara celebração de confetes ao fechar venda ("ganhou")
+    if (targetColId === 'ganhou') {
+      setShowConfetti(true);
+      setConfettiMessage(`🎉 Parabéns pelo Fechamento! Venda do lead "${card.empresa}" concluída com sucesso! 🏆`);
+      setTimeout(() => setShowConfetti(false), 4500);
+    }
+
     // 📲 Disparo automático de WhatsApp ao mover de coluna
     const templateExists = messageTemplates[targetColId] && messageTemplates[targetColId].trim() !== '';
     if (templateExists && card.telefone && card.telefone !== 'Não informado') {
@@ -2247,8 +2258,27 @@ export default function App({ session }) {
       {currentView === 'kanban' && (
         <div className="bg-white p-3 rounded-2xl shadow-xs border border-slate-200/80 mb-6 flex flex-wrap items-center justify-between gap-3 animate-fade-in">
           
-          {/* Lado Esquerdo: Filtros de Exibição */}
-          <div className="flex items-center gap-2 flex-wrap">
+          {/* Lado Esquerdo: Filtros de Exibição & Busca Rápida */}
+          <div className="flex items-center gap-2 flex-wrap flex-1">
+            {/* 🔍 Busca Rápida em Tempo Real */}
+            <div className="relative flex items-center bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1.5 focus-within:bg-white focus-within:ring-2 focus-within:ring-indigo-500 transition-all max-w-[220px]">
+              <span className="text-slate-400 mr-1.5 text-xs">🔍</span>
+              <input
+                type="text"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                placeholder="Buscar lead por nome/fone..."
+                className="bg-transparent text-xs font-semibold text-slate-700 focus:outline-none w-full placeholder:text-slate-400"
+              />
+              {searchTerm && (
+                <button
+                  onClick={() => setSearchTerm('')}
+                  className="text-slate-400 hover:text-slate-600 text-xs font-bold ml-1 cursor-pointer"
+                >
+                  ✕
+                </button>
+              )}
+            </div>
             {userRole === 'admin' && (
               <div className="bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1.5 flex items-center gap-2">
                 <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Visão:</span>
@@ -4637,7 +4667,45 @@ export default function App({ session }) {
             </div>
           </div>
         )}
-      </div>
+      {/* 🎉 ANIMAÇÃO DE CELEBRAÇÃO DE VENDA (CONFETIS 10/10) */}
+      {showConfetti && (
+        <div className="fixed inset-0 pointer-events-none z-[9999] flex items-center justify-center overflow-hidden animate-fade-in">
+          {/* Confetti Particles */}
+          <div className="absolute inset-0 flex items-center justify-center">
+            {Array.from({ length: 65 }).map((_, i) => {
+              const bgColors = ['#f59e0b', '#10b981', '#6366f1', '#ec4899', '#3b82f6', '#8b5cf6', '#eab308'];
+              const randomBg = bgColors[i % bgColors.length];
+              const left = Math.random() * 100;
+              const animDelay = Math.random() * 0.8;
+              const animDuration = 1.8 + Math.random() * 1.5;
+              const size = 8 + Math.random() * 10;
+              return (
+                <div
+                  key={i}
+                  className="absolute rounded-sm animate-confetti-fall shadow-md"
+                  style={{
+                    left: `${left}%`,
+                    top: '-5%',
+                    width: `${size}px`,
+                    height: `${size * 1.4}px`,
+                    backgroundColor: randomBg,
+                    animationDuration: `${animDuration}s`,
+                    animationDelay: `${animDelay}s`,
+                    transform: `rotate(${Math.random() * 360}deg)`
+                  }}
+                />
+              );
+            })}
+          </div>
+
+          {/* Banner Pop-up de Fechamento */}
+          <div className="bg-slate-900/90 backdrop-blur-md text-white border-2 border-emerald-400/80 px-8 py-6 rounded-3xl shadow-2xl shadow-emerald-900/40 text-center pointer-events-auto transform animate-bounce-slow max-w-md mx-4 space-y-2">
+            <span className="text-5xl block animate-pulse">🏆</span>
+            <h2 className="text-xl font-black text-amber-300 uppercase tracking-wide">Venda Realizada!</h2>
+            <p className="text-xs font-semibold text-slate-100 leading-relaxed">{confettiMessage}</p>
+          </div>
+        </div>
+      )}
 
     </div>
   );
