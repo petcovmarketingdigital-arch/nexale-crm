@@ -631,7 +631,7 @@ export default function App({ session }) {
           }
         }
       } catch (e) { /* silently ignore */ }
-      fetchLeads(userRole, selectedSeller, companyId, customTitles);
+      fetchLeads(userRole, selectedSeller, companyId, customTitles, true);
     }, 5000);
     return () => clearInterval(syncInterval);
   }, [companyId, userRole, selectedSeller, customTitles]);
@@ -696,11 +696,11 @@ export default function App({ session }) {
     }
   };
 
-  const fetchLeads = async (role = userRole, filterUserId = selectedSeller, compId = companyId, loadedCustomTitles = customTitles) => {
+  const fetchLeads = async (role = userRole, filterUserId = selectedSeller, compId = companyId, loadedCustomTitles = customTitles, isBackground = false) => {
     if (!compId) return;
     
     try {
-      setLoadingDb(true);
+      if (!isBackground) setLoadingDb(true);
       // Sincroniza configurações da empresa em tempo real
       const { data: compData } = await supabase.from('companies').select('sla_first_touch_minutes, bolsao_max_minutes, max_rotations_before_manager, logo_url, nicho').eq('id', compId).single();
       if (compData) {
@@ -767,11 +767,17 @@ export default function App({ session }) {
         const targetCol = cols.find(c => c.id === dbLead.coluna_id) || cols[0];
         targetCol.cards.push(lead);
       });
-      setColumns(cols);
+
+      setColumns(prevCols => {
+        if (JSON.stringify(prevCols) === JSON.stringify(cols)) {
+          return prevCols;
+        }
+        return cols;
+      });
     } catch (error) {
       console.error('Error fetching leads:', error);
     } finally {
-      setLoadingDb(false);
+      if (!isBackground) setLoadingDb(false);
     }
   };
 
