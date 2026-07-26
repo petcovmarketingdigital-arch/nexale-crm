@@ -736,7 +736,9 @@ export default function App({ session }) {
                                 dbLead.origem === 'Link de WhatsApp' || 
                                 dbLead.origem === 'Captação B2C' || 
                                 dbLead.origem === 'Captação B2B' || 
+                                dbLead.origem === 'Retornado do Bolsão' ||
                                 (dbLead.origem && dbLead.origem.toLowerCase().includes('landing')) ||
+                                (dbLead.origem && dbLead.origem.toLowerCase().includes('bolsão')) ||
                                 (dbLead.origem && dbLead.origem.includes('Enviado'));
 
           const lead = {
@@ -1719,7 +1721,9 @@ export default function App({ session }) {
                           card.origem === 'Link de WhatsApp' || 
                           card.origem === 'Captação B2C' || 
                           card.origem === 'Captação B2B' || 
+                          card.origem === 'Retornado do Bolsão' ||
                           (card.origem && card.origem.toLowerCase().includes('landing')) ||
+                          (card.origem && card.origem.toLowerCase().includes('bolsão')) ||
                           (card.origem && card.origem.includes('Enviado'));
 
     if (!isAutoCapture) return { type: 'normal', label: null };
