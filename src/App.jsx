@@ -947,6 +947,8 @@ export default function App({ session }) {
                 ? (companyNiche === 'imobiliaria' ? 'Captação do Corretor' : 'Captação Própria')
                 : 'Novo Lead');
 
+          const existingNicho = formData.dados_nicho || {};
+          const nowIso = new Date().toISOString();
           const { data, error } = await supabase.from('leads').insert([{
             user_id: assignedUserId,
             company_id: companyId, // VINCULA À EMPRESA CORRETA
@@ -963,8 +965,7 @@ export default function App({ session }) {
             data_retorno: formData.dataRetorno || null,
             notas: formData.notas,
             origem: origemPadrao,
-            dados_nicho: formData.dados_nicho || {},
-            first_touched_at: new Date().toISOString()
+            dados_nicho: { ...existingNicho, assigned_at: nowIso }
           }]).select();
           
           if (error) throw error;
