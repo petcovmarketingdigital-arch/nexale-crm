@@ -1105,10 +1105,17 @@ async function processSlaAndBolsaoRedistribution() {
         });
 
         if (bolsaoLeads.length > 0) {
-          const { data: teamRoles } = await supabase.from('user_roles').select('*').eq('company_id', comp.id);
-          const activeSellers = (teamRoles || [])
-            .filter(r => r.role === 'vendedor' || r.role === 'admin')
-            .map(r => r.id);
+          const { data: teamRoles } = await supabase
+            .from('user_roles')
+            .select('id, email, role')
+            .eq('company_id', comp.id);
+
+          // Apenas vendedores (ou admins se não houver vendedores cadastrados, nunca superadmin)
+          let sellers = (teamRoles || []).filter(r => r.role === 'vendedor');
+          if (sellers.length === 0) {
+            sellers = (teamRoles || []).filter(r => r.role === 'admin');
+          }
+          const sellerIds = sellers.map(s => s.id);
 
           for (const bLead of bolsaoLeads) {
             const n = bLead.dados_nicho || {};
@@ -1118,15 +1125,13 @@ async function processSlaAndBolsaoRedistribution() {
               const enteredDate = new Date(bolsaoEntered);
               const inBolsaoMinutes = (now - enteredDate) / (1000 * 60);
 
-              if (inBolsaoMinutes >= bolsaoMaxMin && activeSellers.length > 0) {
-                let nextSellerId = activeSellers[0];
-                if (activeSellers.length > 1) {
-                  const currIdx = activeSellers.indexOf(bLead.user_id);
-                  const nextIdx = (currIdx + 1) % activeSellers.length;
-                  nextSellerId = activeSellers[nextIdx];
-                }
+              if (inBolsaoMinutes >= bolsaoMaxMin && sellerIds.length > 0) {
+                let currIdx = sellerIds.indexOf(bLead.user_id);
+                if (currIdx === -1) currIdx = 0;
+                const nextIdx = (currIdx + 1) % sellerIds.length;
+                const nextSellerId = sellerIds[nextIdx];
 
-                console.log(`🔄 [SLA Worker] Lead ${bLead.empresa} (${bLead.id}) expirou ${bolsaoMaxMin} min no Bolsão. Redistribuindo para vendedor ${nextSellerId}!`);
+                console.log(`🔄 [SLA Worker] Lead ${bLead.empresa} (${bLead.id}) expirou ${bolsaoMaxMin} min no Bolsão. Redistribuindo para o próximo vendedor da fila (${nextSellerId})!`);
                 const updatedNicho = {
                   ...n,
                   in_bolsao: false,
