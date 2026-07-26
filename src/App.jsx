@@ -1229,18 +1229,25 @@ export default function App({ session }) {
   // Helper: Evolution API uses plain numbers with country code
   const sendWahaMessage = async (phoneNumber, text) => {
     let clean = phoneNumber.replace(/\D/g, '');
-    // Adiciona o DDI do Brasil se tiver apenas DDD + Número (10 ou 11 dígitos)
     if (clean.length === 10 || clean.length === 11) {
       clean = '55' + clean;
     }
     
-    const instanceName = userRole === 'superadmin' ? 'superadmin' : companyId;
-    const res = await fetch(`/evolution/message/sendText/${instanceName}`, {
+    let instanceName = userRole === 'superadmin' ? 'superadmin' : (companyId || 'superadmin');
+    let res = await fetch(`/evolution/message/sendText/${instanceName}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'apikey': '123' },
       body: JSON.stringify({ number: clean, text })
     });
     
+    if (!res.ok && instanceName !== 'superadmin') {
+      res = await fetch(`/evolution/message/sendText/superadmin`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'apikey': '123' },
+        body: JSON.stringify({ number: clean, text })
+      });
+    }
+
     if (!res.ok) {
       const err = await res.text();
       console.error('Erro na Evolution API:', err);
@@ -1255,12 +1262,19 @@ export default function App({ session }) {
       clean = '55' + clean;
     }
     const rawBase64 = base64Audio.includes('base64,') ? base64Audio.split('base64,')[1] : base64Audio;
-    const instanceName = userRole === 'superadmin' ? 'superadmin' : companyId;
-    const res = await fetch(`/evolution/message/sendWhatsAppAudio/${instanceName}`, {
+    let instanceName = userRole === 'superadmin' ? 'superadmin' : (companyId || 'superadmin');
+    let res = await fetch(`/evolution/message/sendWhatsAppAudio/${instanceName}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'apikey': '123' },
       body: JSON.stringify({ number: clean, audio: rawBase64 })
     });
+    if (!res.ok && instanceName !== 'superadmin') {
+      res = await fetch(`/evolution/message/sendWhatsAppAudio/superadmin`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'apikey': '123' },
+        body: JSON.stringify({ number: clean, audio: rawBase64 })
+      });
+    }
     if (!res.ok) {
       const err = await res.text();
       console.error('Erro ao enviar audio:', err);
@@ -1275,8 +1289,8 @@ export default function App({ session }) {
       clean = '55' + clean;
     }
     const rawBase64 = base64Media.includes('base64,') ? base64Media.split('base64,')[1] : base64Media;
-    const instanceName = userRole === 'superadmin' ? 'superadmin' : companyId;
-    const res = await fetch(`/evolution/message/sendMedia/${instanceName}`, {
+    let instanceName = userRole === 'superadmin' ? 'superadmin' : (companyId || 'superadmin');
+    let res = await fetch(`/evolution/message/sendMedia/${instanceName}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'apikey': '123' },
       body: JSON.stringify({
@@ -1288,6 +1302,20 @@ export default function App({ session }) {
         caption: caption
       })
     });
+    if (!res.ok && instanceName !== 'superadmin') {
+      res = await fetch(`/evolution/message/sendMedia/superadmin`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'apikey': '123' },
+        body: JSON.stringify({
+          number: clean,
+          mediatype: mediaType,
+          mimetype: mimeType,
+          media: rawBase64,
+          fileName: fileName,
+          caption: caption
+        })
+      });
+    }
     if (!res.ok) {
       const err = await res.text();
       console.error('Erro ao enviar media:', err);
@@ -1674,28 +1702,36 @@ export default function App({ session }) {
     setWaCheckResults(null);
 
     try {
-      // Para superadmin, o WhatsApp oficial da plataforma é a instância 'superadmin'
-      const targetInstance = userRole === 'superadmin' ? 'superadmin' : (companyId || 'superadmin');
-      
       const formattedNumbers = numbersToCheck.map(n => {
         let clean = String(n).replace(/\D/g, '');
         if (clean.length === 10 || clean.length === 11) clean = '55' + clean;
         return clean;
       });
 
-      const res = await fetch(`/evolution/chat/whatsappNumbers/${targetInstance}`, {
+      let instanceToUse = (userRole === 'superadmin' || !companyId) ? 'superadmin' : companyId;
+      
+      let res = await fetch(`/evolution/chat/whatsappNumbers/${instanceToUse}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'apikey': '123' },
         body: JSON.stringify({ numbers: formattedNumbers })
       });
 
-      const data = await res.json().catch(() => null);
+      let data = await res.json().catch(() => null);
 
-      const valid = [];
-      const invalid = [];
+      if (!Array.isArray(data) && instanceToUse !== 'superadmin') {
+        instanceToUse = 'superadmin';
+        res = await fetch(`/evolution/chat/whatsappNumbers/superadmin`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'apikey': '123' },
+          body: JSON.stringify({ numbers: formattedNumbers })
+        });
+        data = await res.json().catch(() => null);
+      }
 
       if (Array.isArray(data)) {
-        // Mapeia todos os contatos testados para vincular nome, ID do lead e telefone aos resultados
+        const valid = [];
+        const invalid = [];
+
         const allTestedContacts = [
           ...filteredLeadsList.filter(l => campSelectedLeads.includes(l.id)).map(l => ({ id: l.id, nome: l.empresa || l.contato || 'Lead', telefone: l.telefone, isCrm: true })),
           ...externalContactsList.map(c => ({ id: null, nome: c.nome, telefone: c.telefone, isCrm: false }))
@@ -1703,7 +1739,6 @@ export default function App({ session }) {
 
         data.forEach(item => {
           const rawNum = String(item?.number || item?.jid || '').replace(/\D/g, '');
-          
           const matched = allTestedContacts.find(c => {
             let clean = String(c.telefone).replace(/\D/g, '');
             if (clean.length === 10 || clean.length === 11) clean = '55' + clean;
