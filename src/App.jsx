@@ -456,6 +456,36 @@ export default function App({ session }) {
   const [showBolsaoModal, setShowBolsaoModal] = useState(false);
   const [slaNow, setSlaNow] = useState(Date.now());
 
+  // 🔔 Sistema de Notificações
+  const [notifications, setNotifications] = useState([]);
+  const [showNotifPanel, setShowNotifPanel] = useState(false);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const knownLeadIdsRef = React.useRef(null); // null = primeira carga
+
+  // Solicita permissão de notificação do navegador
+  const requestNotifPermission = async () => {
+    if ('Notification' in window && Notification.permission === 'default') {
+      await Notification.requestPermission();
+    }
+  };
+
+  // Dispara notificação nativa do navegador (funciona no celular também)
+  const fireNotification = (title, body, icon = '/logo-nexale.jpg') => {
+    // In-app notification
+    const notif = { id: Date.now(), title, body, time: new Date(), read: false };
+    setNotifications(prev => [notif, ...prev].slice(0, 50));
+    setUnreadCount(prev => prev + 1);
+
+    // Browser push (funciona no Android Chrome em segundo plano)
+    if ('Notification' in window && Notification.permission === 'granted') {
+      try {
+        new Notification(title, { body, icon, badge: icon, tag: String(notif.id) });
+      } catch (e) {
+        // Ignora erro silenciosamente
+      }
+    }
+  };
+
   const handlePushToBolsao = async (cardId, forceRetido = false) => {
     try {
       const nowIso = new Date().toISOString();
@@ -542,13 +572,41 @@ export default function App({ session }) {
   useEffect(() => {
     if (session?.user) {
       initApp();
+      requestNotifPermission();
     }
   }, [session]);
 
   // Sincronização em segundo plano a cada 15s para alinhar SLA e Bolsão entre Admin e Vendedores
   useEffect(() => {
     if (!companyId) return;
-    const syncInterval = setInterval(() => {
+    const syncInterval = setInterval(async () => {
+      // Busca leads novos diretamente para detectar novidades
+      try {
+        let query = supabase.from('leads').select('id, empresa, contato, origem, user_id').eq('company_id', companyId).order('data_criacao', { ascending: false }).limit(30);
+        if (userRole === 'vendedor') query = query.eq('user_id', session?.user?.id);
+        const { data: freshLeads } = await query;
+        if (freshLeads) {
+          const freshIds = new Set(freshLeads.map(l => l.id));
+          if (knownLeadIdsRef.current === null) {
+            // Primeira carga — apenas registra os IDs existentes
+            knownLeadIdsRef.current = freshIds;
+          } else {
+            // Detecta novos leads que ainda não conhecemos
+            const newLeads = freshLeads.filter(l => !knownLeadIdsRef.current.has(l.id));
+            newLeads.forEach(lead => {
+              const isMyLead = !lead.user_id || lead.user_id === session?.user?.id || userRole === 'admin';
+              if (isMyLead) {
+                fireNotification(
+                  '🚀 Novo Lead Recebido!',
+                  `${lead.empresa || lead.contato || 'Novo contato'} entrou no seu Kanban via ${lead.origem || 'captação'}.`
+                );
+              }
+            });
+            // Atualiza o conjunto de IDs conhecidos
+            knownLeadIdsRef.current = new Set([...knownLeadIdsRef.current, ...freshIds]);
+          }
+        }
+      } catch (e) { /* silently ignore */ }
       fetchLeads(userRole, selectedSeller, companyId, customTitles);
     }, 15000);
     return () => clearInterval(syncInterval);
@@ -2002,6 +2060,51 @@ export default function App({ session }) {
         </div>
         
         <div className="flex gap-3 items-center overflow-x-auto md:overflow-visible flex-nowrap md:flex-wrap w-full xl:w-auto pb-2 md:pb-0 minimal-scrollbar [&>*]:flex-shrink-0">
+
+          {/* 🔔 SINO DE NOTIFICAÇÕES */}
+          <div className="relative">
+            <button
+              onClick={() => { setShowNotifPanel(p => !p); setUnreadCount(0); setNotifications(prev => prev.map(n => ({ ...n, read: true }))); }}
+              className="relative w-10 h-10 rounded-xl bg-slate-50 hover:bg-indigo-50 border border-slate-200 hover:border-indigo-200 flex items-center justify-center transition-all cursor-pointer shadow-sm"
+              title="Notificações"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+              </svg>
+              {unreadCount > 0 && (
+                <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[9px] font-black rounded-full w-4 h-4 flex items-center justify-center animate-pulse shadow-md">
+                  {unreadCount > 9 ? '9+' : unreadCount}
+                </span>
+              )}
+            </button>
+
+            {/* Painel de Notificações */}
+            {showNotifPanel && (
+              <div className="absolute right-0 top-12 w-80 bg-white rounded-2xl shadow-2xl shadow-slate-900/15 border border-slate-100 z-50 overflow-hidden animate-fade-in">
+                <div className="flex items-center justify-between p-3 border-b border-slate-100 bg-slate-50">
+                  <span className="font-black text-sm text-slate-700">🔔 Notificações</span>
+                  <button onClick={() => { setNotifications([]); setUnreadCount(0); }} className="text-[10px] text-slate-400 hover:text-red-500 font-bold cursor-pointer transition-colors">Limpar tudo</button>
+                </div>
+                <div className="max-h-80 overflow-y-auto">
+                  {notifications.length === 0 ? (
+                    <div className="py-10 text-center">
+                      <span className="text-3xl block mb-2">🎉</span>
+                      <p className="text-xs text-slate-400 font-medium">Nenhuma notificação ainda.</p>
+                    </div>
+                  ) : (
+                    notifications.map(n => (
+                      <div key={n.id} className={`p-3 border-b border-slate-50 hover:bg-slate-50 transition-colors ${!n.read ? 'bg-indigo-50/40' : ''}`}>
+                        <p className="text-xs font-black text-slate-800">{n.title}</p>
+                        <p className="text-[11px] text-slate-500 mt-0.5">{n.body}</p>
+                        <p className="text-[10px] text-slate-400 mt-1">{n.time.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</p>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+
           {/* Exibição do Código de Convite para o Admin */}
           {userRole === 'admin' && inviteCode && (
             <div className="bg-green-50 border border-green-200 p-1.5 rounded-lg flex items-center shadow-sm shadow-indigo-900/5 cursor-pointer hover:bg-green-100 transition-colors" 
