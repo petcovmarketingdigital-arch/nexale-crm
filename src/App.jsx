@@ -4185,15 +4185,23 @@ export default function App({ session }) {
                 }
 
                 return bCards.map(c => {
-                  const enteredDate = c.bolsao_entered_at ? new Date(c.bolsao_entered_at) : new Date();
-                  const minInBolsao = Math.floor((Date.now() - enteredDate.getTime()) / (1000 * 60));
+                  const enteredTime = (c.bolsao_entered_at ? new Date(c.bolsao_entered_at) : new Date()).getTime();
+                  const elapsedSec = Math.floor((slaNow - enteredTime) / 1000);
+                  const totalBolsaoSec = (bolsaoMaxMinutes || 30) * 60;
+                  const remainingSec = Math.max(0, totalBolsaoSec - elapsedSec);
+
+                  const m = Math.floor(remainingSec / 60);
+                  const s = Math.floor(remainingSec % 60);
+                  const timeStr = `${m}:${s < 10 ? '0' : ''}${s}`;
+                  const isExpiringSoon = remainingSec < 300 && remainingSec > 0;
+
                   return (
                     <div key={c.id} className="bg-slate-50 border border-slate-200 rounded-2xl p-4 flex items-center justify-between gap-4 hover:border-amber-300 transition-all">
                       <div className="min-w-0 flex-1 space-y-1">
                         <div className="flex items-center gap-2 flex-wrap">
                           <span className="font-black text-slate-800 text-sm">{c.empresa}</span>
-                          <span className="text-[10px] font-bold bg-amber-100 text-amber-800 px-2 py-0.5 rounded-md">
-                            ⏳ No Bolsão há {minInBolsao} min
+                          <span className={`text-[10px] font-black px-2.5 py-1 rounded-lg flex items-center gap-1 font-mono tracking-wide ${isExpiringSoon ? 'bg-red-100 text-red-700 animate-pulse border border-red-200' : 'bg-amber-100 text-amber-900 border border-amber-200'}`}>
+                            ⏳ {remainingSec > 0 ? `${timeStr} p/ redistribuir` : 'Expirando tempo...'}
                           </span>
                           <span className="text-[10px] font-bold bg-slate-200 text-slate-700 px-2 py-0.5 rounded-md">
                             🔄 Rodízio {c.bolsao_count}/2
