@@ -545,6 +545,15 @@ export default function App({ session }) {
     }
   }, [session]);
 
+  // Sincronização em segundo plano a cada 15s para alinhar SLA e Bolsão entre Admin e Vendedores
+  useEffect(() => {
+    if (!companyId) return;
+    const syncInterval = setInterval(() => {
+      fetchLeads(userRole, selectedSeller, companyId, customTitles);
+    }, 15000);
+    return () => clearInterval(syncInterval);
+  }, [companyId, userRole, selectedSeller, customTitles]);
+
   const initApp = async () => {
     setLoadingDb(true);
     
@@ -581,7 +590,7 @@ export default function App({ session }) {
     }
 
     if (compId) {
-      const { data: compData } = await supabase.from('companies').select('invite_code, subscription_status, trial_ends_at, phone, nicho, logo_url').eq('id', compId).single();
+      const { data: compData } = await supabase.from('companies').select('invite_code, subscription_status, trial_ends_at, phone, nicho, logo_url, sla_first_touch_minutes, bolsao_max_minutes, max_rotations_before_manager').eq('id', compId).single();
       if (compData) {
         if (role === 'admin') setInviteCode(compData.invite_code);
         setSubscriptionStatus(compData.subscription_status);
@@ -589,8 +598,10 @@ export default function App({ session }) {
         setCompanyPhone(compData.phone || '');
         setCompanyNiche(compData.nicho || 'geral');
         setCompanyLogoUrl(compData.logo_url || '');
+        setSlaMinutes(compData.sla_first_touch_minutes || 20);
+        setBolsaoMaxMinutes(compData.bolsao_max_minutes || 30);
+        setMaxRotations(compData.max_rotations_before_manager || 2);
       }
-
 
       if (role === 'admin') {
         const { data: teamData } = await supabase.from('user_roles').select('*').eq('company_id', compId);
@@ -608,6 +619,16 @@ export default function App({ session }) {
     
     try {
       setLoadingDb(true);
+      // Sincroniza configurações da empresa em tempo real
+      const { data: compData } = await supabase.from('companies').select('sla_first_touch_minutes, bolsao_max_minutes, max_rotations_before_manager, logo_url, nicho').eq('id', compId).single();
+      if (compData) {
+        setSlaMinutes(compData.sla_first_touch_minutes || 20);
+        setBolsaoMaxMinutes(compData.bolsao_max_minutes || 30);
+        setMaxRotations(compData.max_rotations_before_manager || 2);
+        if (compData.logo_url) setCompanyLogoUrl(compData.logo_url);
+        if (compData.nicho) setCompanyNiche(compData.nicho);
+      }
+
       let query = supabase.from('leads').select('*').order('data_criacao', { ascending: false });
 
       // ISOLAMENTO MULTI-TENANT: Apenas leads desta empresa
