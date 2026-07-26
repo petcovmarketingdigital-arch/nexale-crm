@@ -221,9 +221,16 @@ export default function CaptacaoPage({ vendedorId }) {
       const companyId = empresa?.id || null;
       const nowIso = new Date().toISOString();
 
-      // 🔄 Rodízio Automático: busca todos os vendedores da empresa
+      // 🎯 Atribuição Inteligente de Lead:
+      // Se o link pertence a um vendedor individual, o lead vai 100% DIRETO para ele (Captação Própria).
+      // Se for o link geral da empresa/gestor, roda no rodízio automático (Fila C2S).
       let assignedUserId = vendedorId || null;
-      if (companyId) {
+      let origemLead = 'Landing Page';
+
+      if (vendedor && vendedor.role === 'vendedor') {
+        assignedUserId = vendedor.id;
+        origemLead = 'Captação Própria';
+      } else if (companyId) {
         const { data: sellers } = await supabase
           .from('user_roles')
           .select('id, role')
@@ -233,12 +240,10 @@ export default function CaptacaoPage({ vendedorId }) {
         const sellerList = sellers && sellers.length > 0 ? sellers : null;
 
         if (sellerList && sellerList.length > 0) {
-          // Lê o índice atual do rodízio
           const currentIndex = empresa?.last_seller_index || 0;
           const nextIndex = currentIndex % sellerList.length;
           assignedUserId = sellerList[nextIndex].id;
 
-          // Incrementa o índice para o próximo lead
           await supabase
             .from('companies')
             .update({ last_seller_index: nextIndex + 1 })
@@ -254,7 +259,7 @@ export default function CaptacaoPage({ vendedorId }) {
         empresa: nome.trim(),
         tipo: 'B2C',
         coluna_id: 'leads',
-        origem: 'Landing Page',
+        origem: origemLead,
         status_amostra: 'Morno',
         dados_nicho: { ...nichoFields, assigned_at: nowIso },  // SLA stored in dados_nicho
       });
