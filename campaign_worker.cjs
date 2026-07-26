@@ -957,6 +957,88 @@ Regras de Atendimento:
   }
 });
 
+// ==========================================
+// 🔔 NOTIFICAÇÕES WHATSAPP — NOVO LEAD
+// ==========================================
+// Ouve inserções em tempo real na tabela leads e dispara WhatsApp
+// para o vendedor atribuído e para todos os admins da empresa.
+
+supabaseAdmin
+  .channel('lead-insert-notif')
+  .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'leads' }, async (payload) => {
+    try {
+      const lead = payload.new;
+      if (!lead || !lead.company_id) return;
+
+      // Só notifica leads de captação automática
+      const autoOrigens = ['Landing Page', 'Link de WhatsApp', 'Captação B2C', 'Captação B2B'];
+      const isAuto = autoOrigens.some(o => (lead.origem || '').includes(o)) ||
+                     (lead.origem || '').toLowerCase().includes('landing') ||
+                     (lead.origem || '').toLowerCase().includes('whatsapp');
+      if (!isAuto) return;
+
+      const leadName = lead.empresa || lead.contato || 'Novo contato';
+      const origem = lead.origem || 'Captação';
+
+      // Busca configurações SLA da empresa
+      const { data: comp } = await supabaseAdmin.from('companies').select('sla_first_touch_minutes, phone').eq('id', lead.company_id).single();
+      const slaMin = comp?.sla_first_touch_minutes || 20;
+
+      // 1️⃣ Notifica o VENDEDOR atribuído (pelo phone na tabela user_roles)
+      if (lead.user_id) {
+        const { data: vendor } = await supabaseAdmin
+          .from('user_roles')
+          .select('phone, name, email')
+          .eq('id', lead.user_id)
+          .single();
+
+        if (vendor?.phone) {
+          const vendorMsg =
+            `🚀 *Novo Lead Recebido!*\n\n` +
+            `👤 *Nome:* ${leadName}\n` +
+            `📥 *Via:* ${origem}\n` +
+            `⏱️ *Você tem ${slaMin} min para atender!*\n\n` +
+            `Acesse o Nexale CRM agora para não perder esse lead.\n` +
+            `🔗 https://app.nexalecrm.com.br`;
+          try {
+            await sendWahaMessage(lead.company_id, vendor.phone, vendorMsg);
+            console.log(`🔔 [Notif] WhatsApp enviado ao vendedor ${vendor.name || vendor.email} sobre lead "${leadName}"`);
+          } catch(e) {
+            console.warn(`⚠️ [Notif] Falha ao notificar vendedor: ${e.message}`);
+          }
+        }
+      }
+
+      // 2️⃣ Notifica o(s) ADMIN(S) da empresa
+      const { data: admins } = await supabaseAdmin
+        .from('user_roles')
+        .select('phone, name, email')
+        .eq('company_id', lead.company_id)
+        .eq('role', 'admin');
+
+      for (const admin of (admins || [])) {
+        if (!admin.phone) continue;
+        // Não duplica notificação se o admin também é o vendedor
+        if (lead.user_id === admin.id) continue;
+        const adminMsg =
+          `📋 *Lead Distribuído para Equipe*\n\n` +
+          `👤 *Nome:* ${leadName}\n` +
+          `📥 *Via:* ${origem}\n` +
+          `⏱️ *SLA:* ${slaMin} min para atendimento\n\n` +
+          `Acompanhe em: https://app.nexalecrm.com.br`;
+        try {
+          await sendWahaMessage(lead.company_id, admin.phone, adminMsg);
+          console.log(`🔔 [Notif] WhatsApp enviado ao admin ${admin.name || admin.email} sobre lead "${leadName}"`);
+        } catch(e) {
+          console.warn(`⚠️ [Notif] Falha ao notificar admin: ${e.message}`);
+        }
+      }
+    } catch (err) {
+      console.error('❌ [Notif] Erro no listener de novo lead:', err.message);
+    }
+  })
+  .subscribe();
+
 // 🔄 Rotina Automática de SLA & Redistribuição do Bolsão de Leads (C2S Style)
 async function processSlaAndBolsaoRedistribution() {
   try {
