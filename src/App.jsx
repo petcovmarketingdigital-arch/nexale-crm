@@ -559,7 +559,7 @@ export default function App({ session }) {
           }
         });
       }
-    }, 10000);
+    }, 1000);
     return () => clearInterval(interval);
   }, [columns, slaMinutes, maxRotations]);
 
