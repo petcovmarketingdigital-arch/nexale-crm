@@ -1042,7 +1042,7 @@ supabaseAdmin
 // 🔄 Rotina Automática de SLA & Redistribuição do Bolsão de Leads (C2S Style)
 async function processSlaAndBolsaoRedistribution() {
   try {
-    const { data: activeCompanies } = await supabase.from('companies').select('*');
+    const { data: activeCompanies } = await supabaseAdmin.from('companies').select('*');
     if (!activeCompanies || activeCompanies.length === 0) return;
 
     for (const comp of activeCompanies) {
@@ -1052,7 +1052,7 @@ async function processSlaAndBolsaoRedistribution() {
       const now = new Date();
 
       // 1. Checa estouro de SLA (atendimento inicial)
-      const { data: allCompLeads } = await supabase
+      const { data: allCompLeads } = await supabaseAdmin
         .from('leads')
         .select('*')
         .eq('company_id', comp.id);
@@ -1087,7 +1087,7 @@ async function processSlaAndBolsaoRedistribution() {
             if (nextBolsaoCount >= maxRotations) {
               console.log(`🛑 [SLA Worker] Lead ${lead.empresa} (${lead.id}) retido pelo Gestor!`);
               const updatedNicho = { ...nicho, retido_gestor: true, in_bolsao: false, bolsao_count: nextBolsaoCount };
-              await supabase.from('leads').update({
+              await supabaseAdmin.from('leads').update({
                 origem: 'Retido pelo Gestor',
                 bolsao_entered_at: null,
                 dados_nicho: updatedNicho
@@ -1096,7 +1096,7 @@ async function processSlaAndBolsaoRedistribution() {
               console.log(`💼 [SLA Worker] Lead ${lead.empresa} (${lead.id}) estourou SLA de ${slaMin} min. Enviando para Bolsão!`);
               const enteredAt = lead.bolsao_entered_at || nicho.bolsao_entered_at || now.toISOString();
               const updatedNicho = { ...nicho, in_bolsao: true, bolsao_entered_at: enteredAt, bolsao_count: nextBolsaoCount };
-              await supabase.from('leads').update({
+              await supabaseAdmin.from('leads').update({
                 bolsao_entered_at: enteredAt,
                 dados_nicho: updatedNicho
               }).eq('id', lead.id);
@@ -1113,7 +1113,7 @@ async function processSlaAndBolsaoRedistribution() {
         });
 
         if (bolsaoLeads.length > 0) {
-          const { data: teamRoles } = await supabase
+          const { data: teamRoles } = await supabaseAdmin
             .from('user_roles')
             .select('id, email, role')
             .eq('company_id', comp.id);
@@ -1146,7 +1146,7 @@ async function processSlaAndBolsaoRedistribution() {
                   bolsao_entered_at: null,
                   assigned_at: now.toISOString()
                 };
-                await supabase.from('leads').update({
+                await supabaseAdmin.from('leads').update({
                   user_id: nextSellerId,
                   origem: 'Retornado do Bolsão',
                   bolsao_entered_at: null,
