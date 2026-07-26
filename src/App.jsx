@@ -1755,17 +1755,22 @@ export default function App({ session }) {
         assigned_at: nowIso
       };
 
+      let targetUserId = session.user.id;
+      if ((userRole === 'admin' || userRole === 'superadmin') && selectedSeller && selectedSeller !== 'all') {
+        targetUserId = selectedSeller;
+      }
+
       const { error } = await supabase.from('leads').update({
-        user_id: session.user.id,
+        user_id: targetUserId,
         origem: 'Resgatado do Bolsão',
         bolsao_entered_at: null,
         dados_nicho: updatedNicho
       }).eq('id', leadId);
 
       if (error) throw error;
-      alert('🚀 Sucesso! Lead resgatado com sucesso e atribuído a você!');
+      alert('🚀 Sucesso! Lead resgatado com sucesso!');
       setShowBolsaoModal(false);
-      fetchLeads();
+      fetchLeads(userRole, selectedSeller, companyId, customTitles);
     } catch (e) {
       alert('Erro ao resgatar lead: ' + e.message);
     }
