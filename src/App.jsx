@@ -2757,8 +2757,8 @@ export default function App({ session }) {
                         className="w-full text-sm border border-slate-200 rounded-lg p-2 font-semibold focus:outline-none focus:ring-2 focus:ring-orange-400"
                       />
                       {campMode === 'agendar' && campAttachment && (
-                        <p className="text-[11px] text-red-500 font-bold mb-3">
-                          ⚠️ Atenção: Não é possível agendar campanhas com anexo. Mude para 'Agora' ou remova o anexo.
+                        <p className="text-[11px] text-emerald-600 font-bold mb-3">
+                          📎 Arquivo "{campAttachment.name}" anexado ao agendamento. O servidor fará o disparo com anexo na data programada.
                         </p>
                       )}
                       <p className="text-[11px] text-slate-400 mt-2">O servidor fará o disparo automaticamente nesta data, mesmo com o PC desligado.</p>
@@ -2769,7 +2769,7 @@ export default function App({ session }) {
                 {/* Botão de disparo */}
                 <button
                   onClick={handleFireCampaign}
-                  disabled={campRunning || (campMode === 'agendar' && !!campAttachment)}
+                  disabled={campRunning}
                   className="w-full py-4 bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 disabled:opacity-50 text-slate-900 font-black rounded-2xl transition-all shadow-lg shadow-orange-500/30 text-lg transform hover:-translate-y-0.5"
                 >
                   {campRunning ? '⏳ Disparando...' : campMode === 'agendar' ? '⏰ Agendar Campanha' : '🚀 Disparar Campanha Agora'}
