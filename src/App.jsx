@@ -2065,257 +2065,311 @@ export default function App({ session }) {
         </div>
       )}
 
-      {/* HEADER COMPLETO */}
-      <div className="flex flex-col xl:flex-row justify-between items-start xl:items-center mb-8 gap-4 bg-white p-4 rounded-xl shadow-sm shadow-indigo-900/5 border border-slate-100">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
-            <img src="/logo-nexale.jpg" alt="Nexale Logo" className="h-8 w-8 rounded-lg object-cover shadow-sm border border-slate-100" />
-            <span>Nexale CRM</span>
-            {companyLogoUrl && (
-              <span className="flex items-center gap-2 border-l border-slate-200 pl-3 ml-1 animate-fade-in" title="Empresa Assinante">
-                <span className="bg-slate-50 border border-slate-200 px-2.5 py-1 rounded-lg flex items-center gap-1.5">
-                  <img src={companyLogoUrl} alt="Logo Empresa" className="h-6 max-w-[120px] object-contain rounded" />
-                </span>
-              </span>
-            )}
-          </h1>
-
-          <p className="text-sm text-slate-500 mt-1 flex items-center gap-2">
-            Gestão Inteligente
-            <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${userRole === 'admin' ? 'bg-indigo-100 text-indigo-700' : 'bg-slate-100 text-slate-600'}`}>
-              Perfil: {userRole}
-            </span>
-          </p>
-        </div>
-        
-        <div className="flex gap-3 items-center overflow-x-auto md:overflow-visible flex-nowrap md:flex-wrap w-full xl:w-auto pb-2 md:pb-0 minimal-scrollbar [&>*]:flex-shrink-0">
-
-          {/* 🔔 SINO DE NOTIFICAÇÕES */}
-          <div className="relative">
-            <button
-              onClick={() => { setShowNotifPanel(p => !p); setUnreadCount(0); setNotifications(prev => prev.map(n => ({ ...n, read: true }))); }}
-              className="relative w-10 h-10 rounded-xl bg-slate-50 hover:bg-indigo-50 border border-slate-200 hover:border-indigo-200 flex items-center justify-center transition-all cursor-pointer shadow-sm"
-              title="Notificações"
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
-              </svg>
-              {unreadCount > 0 && (
-                <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[9px] font-black rounded-full w-4 h-4 flex items-center justify-center animate-pulse shadow-md">
-                  {unreadCount > 9 ? '9+' : unreadCount}
-                </span>
-              )}
-            </button>
-
-            {/* Painel de Notificações */}
-            {showNotifPanel && (
-              <div className="absolute right-0 top-12 w-80 bg-white rounded-2xl shadow-2xl shadow-slate-900/15 border border-slate-100 z-50 overflow-hidden animate-fade-in">
-                <div className="flex items-center justify-between p-3 border-b border-slate-100 bg-slate-50">
-                  <span className="font-black text-sm text-slate-700">🔔 Notificações</span>
-                  <button onClick={() => { setNotifications([]); setUnreadCount(0); }} className="text-[10px] text-slate-400 hover:text-red-500 font-bold cursor-pointer transition-colors">Limpar tudo</button>
-                </div>
-                <div className="max-h-80 overflow-y-auto">
-                  {notifications.length === 0 ? (
-                    <div className="py-10 text-center">
-                      <span className="text-3xl block mb-2">🎉</span>
-                      <p className="text-xs text-slate-400 font-medium">Nenhuma notificação ainda.</p>
-                    </div>
-                  ) : (
-                    notifications.map(n => (
-                      <div key={n.id} className={`p-3 border-b border-slate-50 hover:bg-slate-50 transition-colors ${!n.read ? 'bg-indigo-50/40' : ''}`}>
-                        <p className="text-xs font-black text-slate-800">{n.title}</p>
-                        <p className="text-[11px] text-slate-500 mt-0.5">{n.body}</p>
-                        <p className="text-[10px] text-slate-400 mt-1">{n.time.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</p>
-                      </div>
-                    ))
+      {/* 🚀 CABEÇALHO MODERNO E ORGANIZADO (NAVBAR FIXA) */}
+      <header className="bg-white border border-slate-100 rounded-2xl p-4 mb-6 shadow-sm shadow-indigo-900/5">
+        <div className="flex flex-col lg:flex-row items-center justify-between gap-4">
+          
+          {/* Lado Esquerdo: Brand Logo & Perfil */}
+          <div className="flex items-center justify-between w-full lg:w-auto">
+            <div className="flex items-center gap-3">
+              <img src="/logo-nexale.jpg" alt="Nexale Logo" className="h-9 w-9 rounded-xl object-cover shadow-sm border border-slate-100" />
+              <div>
+                <h1 className="text-lg font-black text-slate-800 tracking-tight leading-none flex items-center gap-2">
+                  Nexale <span className="text-indigo-600">CRM</span>
+                  {companyLogoUrl && (
+                    <span className="hidden sm:inline-flex items-center border-l border-slate-200 pl-2.5 ml-1">
+                      <img src={companyLogoUrl} alt="Logo" className="h-5 max-w-[100px] object-contain" />
+                    </span>
                   )}
-                </div>
+                </h1>
+                <p className="text-[11px] text-slate-400 font-bold mt-0.5 flex items-center gap-1.5">
+                  Gestão Inteligente
+                  <span className={`px-1.5 py-0.2 rounded text-[9px] font-black uppercase ${userRole === 'admin' ? 'bg-indigo-100 text-indigo-700' : 'bg-slate-100 text-slate-600'}`}>
+                    {userRole}
+                  </span>
+                </p>
               </div>
-            )}
-          </div>
-
-          {/* Exibição do Código de Convite para o Admin */}
-          {userRole === 'admin' && inviteCode && (
-            <div className="bg-green-50 border border-green-200 p-1.5 rounded-lg flex items-center shadow-sm shadow-indigo-900/5 cursor-pointer hover:bg-green-100 transition-colors" 
-                 onClick={() => { navigator.clipboard.writeText(inviteCode); alert('Código copiado!'); }}
-                 title="Clique para copiar e enviar para seus vendedores"
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-green-600 ml-1" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
-              <span className="text-[11px] text-green-700 font-bold ml-1 mr-2">CÓDIGO DA EQUIPE:</span>
-              <span className="bg-white border border-green-200 rounded text-xs px-2 py-0.5 font-mono text-green-800 font-black tracking-wider">{inviteCode}</span>
             </div>
-          )}
 
-          {userRole === 'admin' && (
-            <div className="bg-indigo-50 border border-indigo-100 p-1.5 rounded-lg flex items-center shadow-sm shadow-indigo-900/5">
-              <span className="text-[11px] text-indigo-700 font-bold ml-2 mr-2 uppercase">Visão do Gerente:</span>
-              <select 
-                value={selectedSeller} 
-                onChange={(e) => handleFilterChange(e.target.value)}
-                className="bg-white border-none rounded text-sm p-1.5 font-semibold text-slate-700 focus:ring-2 focus:ring-indigo-500 cursor-pointer shadow-sm shadow-indigo-900/5 max-w-[150px] truncate"
+            {/* Sino no mobile */}
+            <div className="flex lg:hidden items-center gap-2">
+              {/* Sino */}
+              <div className="relative">
+                <button
+                  onClick={() => { setShowNotifPanel(p => !p); setUnreadCount(0); setNotifications(prev => prev.map(n => ({ ...n, read: true }))); }}
+                  className="relative w-9 h-9 rounded-xl bg-slate-50 hover:bg-indigo-50 border border-slate-200 flex items-center justify-center transition-all cursor-pointer"
+                  title="Notificações"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+                  </svg>
+                  {unreadCount > 0 && (
+                    <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[9px] font-black rounded-full w-4 h-4 flex items-center justify-center animate-pulse shadow-md">
+                      {unreadCount > 9 ? '9+' : unreadCount}
+                    </span>
+                  )}
+                </button>
+              </div>
+              <button
+                onClick={() => {
+                  setEditingCardId(null);
+                  setFormData({ empresa: '', contato: '', telefone: '', email: '', tipo: 'B2B', observacao: '', valor: '', temperatura: 'Frio', dataRetorno: '', notas: '', dados_nicho: {}, user_id: session?.user?.id || '' });
+                  setLeadNotes([]);
+                  setShowModal(true);
+                }}
+                className="bg-indigo-600 hover:bg-indigo-700 text-white font-black text-xs px-3 py-2 rounded-xl transition-all shadow-md cursor-pointer"
               >
-                <option value="all">Toda a Equipe</option>
-                {teamMembers.map(m => (
-                  <option key={m.id} value={m.id}>{m.email} {m.id === session.user.id ? '(Você)' : ''}</option>
-                ))}
-              </select>
+                + Novo Lead
+              </button>
             </div>
-          )}
-
-          <div className="bg-indigo-50 border border-indigo-100 p-1.5 rounded-lg flex items-center shadow-sm shadow-indigo-900/5">
-            <span className="text-[11px] text-indigo-700 font-bold ml-2 mr-2 uppercase">Origem:</span>
-            <select
-              value={selectedOrigem}
-              onChange={(e) => setSelectedOrigem(e.target.value)}
-              className="bg-white border-none rounded text-sm p-1.5 font-semibold text-slate-700 focus:ring-2 focus:ring-indigo-500 cursor-pointer shadow-sm shadow-indigo-900/5 max-w-[180px] truncate"
-            >
-              <option value="all">Todas as Origens</option>
-              <option value="Novo Lead">Novo Lead</option>
-              <option value="Captação B2B">Captação B2B</option>
-              <option value="Link de WhatsApp">Link de WhatsApp</option>
-              <option value="Landing Page">Landing Page</option>
-              <option value={companyNiche === 'imobiliaria' ? 'Enviado pela Imobiliária' : 'Enviado pela Empresa'}>
-                {companyNiche === 'imobiliaria' ? 'Enviado pela Imobiliária' : 'Enviado pela Empresa'}
-              </option>
-              <option value={companyNiche === 'imobiliaria' ? 'Captação do Corretor' : 'Captação Própria'}>
-                {companyNiche === 'imobiliaria' ? 'Captação do Corretor' : 'Captação Própria'}
-              </option>
-            </select>
           </div>
 
-          {/* Seletor de Nicho na barra de cabeçalho */}
-          <div className="bg-indigo-50 border border-indigo-100 p-1.5 rounded-lg flex items-center shadow-sm shadow-indigo-900/5">
-            <span className="text-[11px] text-indigo-700 font-bold ml-2 mr-2 uppercase">Segmento/Nicho:</span>
-            {userRole === 'admin' || userRole === 'superadmin' ? (
-              <select
-                value={companyNiche}
-                onChange={(e) => handleUpdateCompanyNiche(e.target.value)}
-                className="bg-white border-none rounded text-sm p-1.5 font-semibold text-slate-700 focus:ring-2 focus:ring-indigo-500 cursor-pointer shadow-sm shadow-indigo-900/5 max-w-[180px] truncate"
-              >
-                {Object.entries(NICHOS_CONFIG).map(([key, cfg]) => (
-                  <option key={key} value={key}>{cfg.label}</option>
-                ))}
-              </select>
-            ) : (
-              <span className="bg-white border border-indigo-200 rounded text-xs px-2.5 py-1 font-semibold text-indigo-800 tracking-wide shadow-sm shadow-indigo-900/5">
-                {NICHOS_CONFIG[companyNiche]?.label || 'Geral'}
-              </span>
-            )}
-          </div>
-
-          {/* SuperAdmin: sem seletor de empresa — tem Kanban próprio */}
-
-          <div className="bg-slate-100 p-1 rounded-lg flex flex-wrap gap-1">
-            <button 
+          {/* Centro: Menu Principal (Navegação em Abas) */}
+          <nav className="flex items-center bg-slate-100/80 p-1 rounded-xl gap-1 overflow-x-auto max-w-full minimal-scrollbar">
+            <button
               onClick={() => setCurrentView('kanban')}
-              className={`px-3 py-1.5 rounded-md text-sm font-bold transition-all ${currentView === 'kanban' ? 'bg-white text-indigo-600 shadow-sm shadow-indigo-900/5' : 'text-slate-500 hover:text-slate-700'}`}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shrink-0 ${currentView === 'kanban' ? 'bg-white text-indigo-600 shadow-xs font-black' : 'text-slate-600 hover:text-slate-900'}`}
             >
-              📋 Kanban
+              📋 Funil Kanban
             </button>
-            <button 
+            <button
               onClick={() => setCurrentView('dashboard')}
-              className={`px-3 py-1.5 rounded-md text-sm font-bold transition-all ${currentView === 'dashboard' ? 'bg-white text-indigo-600 shadow-sm shadow-indigo-900/5' : 'text-slate-500 hover:text-slate-700'}`}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shrink-0 ${currentView === 'dashboard' ? 'bg-white text-indigo-600 shadow-xs font-black' : 'text-slate-600 hover:text-slate-900'}`}
             >
               📊 Relatórios
             </button>
-              <button 
-                onClick={() => setCurrentView('whatsapp')}
-                className={`px-3 py-1.5 rounded-md text-sm font-bold transition-all ${currentView === 'whatsapp' ? 'bg-green-500 text-slate-900 shadow-sm shadow-indigo-900/5' : 'text-green-600 hover:text-green-700'}`}
-              >
-                💬 WhatsApp
-              </button>
-              <button 
-                onClick={() => setCurrentView('ai_config')}
-                className={`px-3 py-1.5 rounded-md text-sm font-bold transition-all ${currentView === 'ai_config' ? 'bg-indigo-600 text-white shadow-sm shadow-indigo-900/5' : 'text-indigo-600 hover:text-indigo-700 border border-indigo-200/50 bg-indigo-50/50'}`}
-              >
-                ⚙️ Configurações / IA
-              </button>
-
-              <button 
-                onClick={() => setCurrentView('campanha')}
-                className={`px-3 py-1.5 rounded-md text-sm font-bold transition-all ${currentView === 'campanha' ? 'bg-orange-500 text-slate-900 shadow-sm shadow-indigo-900/5' : 'text-orange-600 hover:text-orange-700'}`}
-              >
-                🚀 Campanha
-              </button>
-
-              <button 
-                onClick={() => setCurrentView('tutorials')}
-                className={`px-3 py-1.5 rounded-md text-sm font-bold transition-all ${currentView === 'tutorials' ? 'bg-indigo-600 text-white shadow-sm shadow-indigo-900/5' : 'text-slate-500 hover:text-slate-700'}`}
-              >
-                🎥 Tutoriais
-              </button>
-
+            <button
+              onClick={() => setCurrentView('whatsapp')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shrink-0 ${currentView === 'whatsapp' ? 'bg-emerald-500 text-white shadow-xs font-black' : 'text-emerald-700 hover:text-emerald-800'}`}
+            >
+              💬 WhatsApp
+            </button>
+            <button
+              onClick={() => setCurrentView('campanha')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shrink-0 ${currentView === 'campanha' ? 'bg-orange-500 text-white shadow-xs font-black' : 'text-orange-600 hover:text-orange-700'}`}
+            >
+              🚀 Campanhas
+            </button>
+            <button
+              onClick={() => setCurrentView('ai_config')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shrink-0 ${currentView === 'ai_config' ? 'bg-indigo-600 text-white shadow-xs font-black' : 'text-indigo-600 hover:text-indigo-700'}`}
+            >
+              ⚙️ Configurações / IA
+            </button>
+            <button
+              onClick={() => setCurrentView('tutorials')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shrink-0 ${currentView === 'tutorials' ? 'bg-indigo-600 text-white shadow-xs font-black' : 'text-slate-600 hover:text-slate-900'}`}
+            >
+              🎥 Tutoriais
+            </button>
             {userRole === 'superadmin' && (
-              <button 
+              <button
                 onClick={() => setCurrentView('superadmin')}
-                className={`px-3 py-1.5 rounded-md text-sm font-bold transition-all ${currentView === 'superadmin' ? 'bg-black text-white shadow-sm shadow-indigo-900/5' : 'text-slate-500 hover:text-slate-700'}`}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shrink-0 ${currentView === 'superadmin' ? 'bg-black text-white shadow-xs font-black' : 'text-slate-600 hover:text-slate-900'}`}
               >
                 👑 Painel Master
               </button>
             )}
+          </nav>
+
+          {/* Lado Direito no Desktop: Sino + Botão Principal de Lead + Sair */}
+          <div className="hidden lg:flex items-center gap-3">
+            {/* 🔔 SINO DE NOTIFICAÇÕES DESKTOP */}
+            <div className="relative">
+              <button
+                onClick={() => { setShowNotifPanel(p => !p); setUnreadCount(0); setNotifications(prev => prev.map(n => ({ ...n, read: true }))); }}
+                className="relative w-10 h-10 rounded-xl bg-slate-50 hover:bg-indigo-50 border border-slate-200 hover:border-indigo-200 flex items-center justify-center transition-all cursor-pointer shadow-xs"
+                title="Notificações"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+                </svg>
+                {unreadCount > 0 && (
+                  <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[9px] font-black rounded-full w-4 h-4 flex items-center justify-center animate-pulse shadow-md">
+                    {unreadCount > 9 ? '9+' : unreadCount}
+                  </span>
+                )}
+              </button>
+
+              {/* Painel de Notificações */}
+              {showNotifPanel && (
+                <div className="absolute right-0 top-12 w-80 bg-white rounded-2xl shadow-2xl shadow-slate-900/15 border border-slate-100 z-50 overflow-hidden animate-fade-in">
+                  <div className="flex items-center justify-between p-3 border-b border-slate-100 bg-slate-50">
+                    <span className="font-black text-sm text-slate-700">🔔 Notificações</span>
+                    <button onClick={() => { setNotifications([]); setUnreadCount(0); }} className="text-[10px] text-slate-400 hover:text-red-500 font-bold cursor-pointer transition-colors">Limpar tudo</button>
+                  </div>
+                  <div className="max-h-80 overflow-y-auto">
+                    {notifications.length === 0 ? (
+                      <div className="py-10 text-center">
+                        <span className="text-3xl block mb-2">🎉</span>
+                        <p className="text-xs text-slate-400 font-medium">Nenhuma notificação ainda.</p>
+                      </div>
+                    ) : (
+                      notifications.map(n => (
+                        <div key={n.id} className={`p-3 border-b border-slate-50 hover:bg-slate-50 transition-colors ${!n.read ? 'bg-indigo-50/40' : ''}`}>
+                          <p className="text-xs font-black text-slate-800">{n.title}</p>
+                          <p className="text-[11px] text-slate-500 mt-0.5">{n.body}</p>
+                          <p className="text-[10px] text-slate-400 mt-1">{n.time.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</p>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* ➕ Botão de Cadastro Principal */}
+            <button
+              onClick={() => {
+                setEditingCardId(null);
+                setFormData({ empresa: '', contato: '', telefone: '', email: '', tipo: 'B2B', observacao: '', valor: '', temperatura: 'Frio', dataRetorno: '', notas: '', dados_nicho: {}, user_id: session?.user?.id || '' });
+                setLeadNotes([]);
+                setShowModal(true);
+              }}
+              className="bg-indigo-600 hover:bg-indigo-700 text-white font-black text-xs px-4 py-2.5 rounded-xl transition-all shadow-md shadow-indigo-600/20 cursor-pointer flex items-center gap-1.5 transform hover:-translate-y-0.5"
+            >
+              <span className="text-sm font-black">+</span> Novo Lead
+            </button>
+
+            {/* Sair */}
+            <button
+              onClick={() => supabase.auth.signOut()}
+              className="text-slate-400 hover:text-red-500 p-2.5 bg-slate-50 rounded-xl hover:bg-red-50 transition-colors border border-slate-100 cursor-pointer"
+              title="Sair da conta"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" /></svg>
+            </button>
+          </div>
+        </div>
+      </header>
+
+      {/* 🎛️ SUB-BARRA DE FERRAMENTAS DO KANBAN (Filtros & Ações Específicas) */}
+      {currentView === 'kanban' && (
+        <div className="bg-white p-3 rounded-2xl shadow-xs border border-slate-200/80 mb-6 flex flex-wrap items-center justify-between gap-3 animate-fade-in">
+          
+          {/* Lado Esquerdo: Filtros de Exibição */}
+          <div className="flex items-center gap-2 flex-wrap">
+            {userRole === 'admin' && (
+              <div className="bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1.5 flex items-center gap-2">
+                <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Visão:</span>
+                <select
+                  value={selectedSeller}
+                  onChange={(e) => handleFilterChange(e.target.value)}
+                  className="bg-transparent text-xs font-bold text-slate-700 focus:outline-none cursor-pointer max-w-[140px] truncate"
+                >
+                  <option value="all">Toda a Equipe</option>
+                  {teamMembers.map(m => (
+                    <option key={m.id} value={m.id}>{m.email} {m.id === session.user.id ? '(Você)' : ''}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            <div className="bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1.5 flex items-center gap-2">
+              <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Origem:</span>
+              <select
+                value={selectedOrigem}
+                onChange={(e) => setSelectedOrigem(e.target.value)}
+                className="bg-transparent text-xs font-bold text-slate-700 focus:outline-none cursor-pointer max-w-[150px] truncate"
+              >
+                <option value="all">Todas as Origens</option>
+                <option value="Novo Lead">Novo Lead</option>
+                <option value="Captação B2B">Captação B2B</option>
+                <option value="Link de WhatsApp">Link de WhatsApp</option>
+                <option value="Landing Page">Landing Page</option>
+                <option value={companyNiche === 'imobiliaria' ? 'Enviado pela Imobiliária' : 'Enviado pela Empresa'}>
+                  {companyNiche === 'imobiliaria' ? 'Enviado pela Imobiliária' : 'Enviado pela Empresa'}
+                </option>
+                <option value={companyNiche === 'imobiliaria' ? 'Captação do Corretor' : 'Captação Própria'}>
+                  {companyNiche === 'imobiliaria' ? 'Captação do Corretor' : 'Captação Própria'}
+                </option>
+              </select>
+            </div>
+
+            <div className="bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1.5 flex items-center gap-2">
+              <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Segmento:</span>
+              {userRole === 'admin' || userRole === 'superadmin' ? (
+                <select
+                  value={companyNiche}
+                  onChange={(e) => handleUpdateCompanyNiche(e.target.value)}
+                  className="bg-transparent text-xs font-bold text-slate-700 focus:outline-none cursor-pointer max-w-[160px] truncate"
+                >
+                  {Object.entries(NICHOS_CONFIG).map(([key, cfg]) => (
+                    <option key={key} value={key}>{cfg.label}</option>
+                  ))}
+                </select>
+              ) : (
+                <span className="text-xs font-bold text-indigo-700">
+                  {NICHOS_CONFIG[companyNiche]?.label || 'Geral'}
+                </span>
+              )}
+            </div>
+
+            {userRole === 'admin' && inviteCode && (
+              <div
+                onClick={() => { navigator.clipboard.writeText(inviteCode); alert('Código copiado!'); }}
+                className="bg-emerald-50 border border-emerald-200 px-2.5 py-1.5 rounded-xl flex items-center gap-1.5 cursor-pointer hover:bg-emerald-100 transition-colors"
+                title="Clique para copiar e enviar para seus vendedores"
+              >
+                <span className="text-[10px] font-black text-emerald-700 uppercase">CÓDIGO DA EQUIPE:</span>
+                <span className="text-xs font-mono font-black text-emerald-800">{inviteCode}</span>
+              </div>
+            )}
           </div>
 
-          <button 
-            onClick={() => setShowBolsaoModal(true)}
-            className="bg-amber-500 hover:bg-amber-600 text-slate-900 font-bold px-3 py-1.5 rounded-lg transition-colors shadow-sm shadow-amber-900/5 text-sm flex items-center gap-1.5 cursor-pointer"
-            title="Bolsão de Oportunidades (Resgate de Clientes)"
-          >
-            💼 Bolsão {(() => {
-              const count = columns.flatMap(col => col.cards.filter(c => c.in_bolsao)).length;
-              return count > 0 ? <span className="bg-white text-amber-800 text-xs px-1.5 py-0.5 rounded-full font-black">{count}</span> : null;
-            })()}
-          </button>
-
-          {(userRole === 'admin' || userRole === 'superadmin') && (
-            <button 
-              onClick={() => setShowSlaReportModal(true)}
-              className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold px-3 py-1.5 rounded-lg transition-colors shadow-sm text-sm flex items-center gap-1 cursor-pointer"
-              title="Relatório de Atendimento Corretor vs SLA"
+          {/* Lado Direito: Ações de Captação, Bolsão e Mensagens */}
+          <div className="flex items-center gap-2 flex-wrap">
+            {/* 💼 Bolsão */}
+            <button
+              onClick={() => setShowBolsaoModal(true)}
+              className="bg-amber-500 hover:bg-amber-600 text-slate-900 font-extrabold px-3 py-2 rounded-xl text-xs flex items-center gap-1.5 shadow-xs transition-all cursor-pointer"
+              title="Bolsão de Oportunidades (Resgate de Clientes)"
             >
-              📊 SLA Corretores
+              💼 Bolsão {(() => {
+                const count = columns.flatMap(col => col.cards.filter(c => c.in_bolsao)).length;
+                return count > 0 ? <span className="bg-white text-amber-900 text-[10px] px-1.5 py-0.5 rounded-full font-black">{count}</span> : null;
+              })()}
             </button>
-          )}
 
-          <button 
-            onClick={() => setShowScraperModal(true)}
-            className="bg-purple-600 hover:bg-purple-700 text-slate-900 font-medium px-3 py-1.5 rounded-lg transition-colors shadow-sm shadow-indigo-900/5 text-sm"
-          >
-            ⚡ Captação B2B
-          </button>
-          <button 
-            onClick={() => setShowLinkModal(true)}
-            className="bg-green-500 hover:bg-green-600 text-slate-900 font-medium px-3 py-1.5 rounded-lg transition-colors shadow-sm shadow-indigo-900/5 text-sm"
-          >
-            🔗 Captação B2C / PF
-          </button>
-          <button 
-            onClick={() => setShowTemplateModal(true)}
-            className="bg-emerald-500 hover:bg-emerald-600 text-slate-900 font-medium px-3 py-1.5 rounded-lg transition-colors shadow-sm shadow-emerald-900/5 text-sm flex items-center gap-1"
-            title="Editar Mensagens de WhatsApp"
-          >
-            ⚙️ Mensagens
-          </button>
-          <button 
-            onClick={() => {
-              setEditingCardId(null);
-              setFormData({ empresa: '', contato: '', telefone: '', email: '', tipo: 'B2B', observacao: '', valor: '', temperatura: 'Frio', dataRetorno: '', notas: '', dados_nicho: {}, user_id: session?.user?.id || '' });
-              setLeadNotes([]);
-              setShowModal(true);
-            }}
-            className="bg-indigo-600 hover:bg-indigo-700 text-slate-900 font-medium px-3 py-1.5 rounded-lg transition-colors shadow-sm shadow-indigo-900/5 text-sm flex items-center gap-1"
-          >
-            + Novo Lead
-          </button>
-          <button 
-            onClick={() => supabase.auth.signOut()}
-            className="text-slate-400 hover:text-red-500 text-[9px] font-black uppercase tracking-wider transition-colors ml-1 px-2.5 py-1 bg-slate-50 rounded-lg hover:bg-red-50 flex flex-col items-center justify-center gap-0.5 border border-slate-100/60"
-            title="Sair do Sistema"
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" /></svg>
-            <span>Sair</span>
-          </button>
+            {/* 📊 SLA Corretores */}
+            {(userRole === 'admin' || userRole === 'superadmin') && (
+              <button
+                onClick={() => setShowSlaReportModal(true)}
+                className="bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 font-bold px-3 py-2 rounded-xl text-xs flex items-center gap-1 shadow-xs transition-all cursor-pointer"
+                title="Relatório de Atendimento Corretor vs SLA"
+              >
+                📊 SLA Corretores
+              </button>
+            )}
+
+            {/* 🔗 Captação B2C */}
+            <button
+              onClick={() => setShowLinkModal(true)}
+              className="bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 font-bold px-3 py-2 rounded-xl text-xs flex items-center gap-1 shadow-xs transition-all cursor-pointer"
+            >
+              🔗 Captação B2C / PF
+            </button>
+
+            {/* ⚡ Captação B2B */}
+            <button
+              onClick={() => setShowScraperModal(true)}
+              className="bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 font-bold px-3 py-2 rounded-xl text-xs flex items-center gap-1 shadow-xs transition-all cursor-pointer"
+            >
+              ⚡ Captação B2B
+            </button>
+
+            {/* ⚙️ Mensagens */}
+            <button
+              onClick={() => setShowTemplateModal(true)}
+              className="bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold px-3 py-2 rounded-xl text-xs flex items-center gap-1 shadow-xs transition-all cursor-pointer"
+              title="Editar Mensagens de WhatsApp"
+            >
+              ⚙️ Mensagens
+            </button>
+          </div>
+
         </div>
-      </div>
+      )}
 
       {/* Banner de Assinatura / Trial */}
       {userRole !== 'vendedor' && userRole !== 'superadmin' && (
