@@ -1106,7 +1106,9 @@ async function processSlaAndBolsaoRedistribution() {
 
         if (bolsaoLeads.length > 0) {
           const { data: teamRoles } = await supabase.from('user_roles').select('*').eq('company_id', comp.id);
-          const activeSellers = (teamRoles || []).map(r => r.id);
+          const activeSellers = (teamRoles || [])
+            .filter(r => r.role === 'vendedor' || r.role === 'admin')
+            .map(r => r.id);
 
           for (const bLead of bolsaoLeads) {
             const n = bLead.dados_nicho || {};
@@ -1117,9 +1119,12 @@ async function processSlaAndBolsaoRedistribution() {
               const inBolsaoMinutes = (now - enteredDate) / (1000 * 60);
 
               if (inBolsaoMinutes >= bolsaoMaxMin && activeSellers.length > 0) {
-                const currIdx = activeSellers.indexOf(bLead.user_id);
-                const nextIdx = (currIdx + 1) % activeSellers.length;
-                const nextSellerId = activeSellers[nextIdx];
+                let nextSellerId = activeSellers[0];
+                if (activeSellers.length > 1) {
+                  const currIdx = activeSellers.indexOf(bLead.user_id);
+                  const nextIdx = (currIdx + 1) % activeSellers.length;
+                  nextSellerId = activeSellers[nextIdx];
+                }
 
                 console.log(`🔄 [SLA Worker] Lead ${bLead.empresa} (${bLead.id}) expirou ${bolsaoMaxMin} min no Bolsão. Redistribuindo para vendedor ${nextSellerId}!`);
                 const updatedNicho = {
@@ -1145,8 +1150,11 @@ async function processSlaAndBolsaoRedistribution() {
   }
 }
 
-// Executa a cada 60 segundos
-setInterval(processSlaAndBolsaoRedistribution, 60000);
+// Executa imediatamente na inicialização
+processSlaAndBolsaoRedistribution();
+
+// Executa a cada 30 segundos
+setInterval(processSlaAndBolsaoRedistribution, 30000);
 
 const PORT = 3001;
 app.listen(PORT, () => {

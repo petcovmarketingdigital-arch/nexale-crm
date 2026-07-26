@@ -632,7 +632,7 @@ export default function App({ session }) {
         }
       } catch (e) { /* silently ignore */ }
       fetchLeads(userRole, selectedSeller, companyId, customTitles);
-    }, 15000);
+    }, 5000);
     return () => clearInterval(syncInterval);
   }, [companyId, userRole, selectedSeller, customTitles]);
 
