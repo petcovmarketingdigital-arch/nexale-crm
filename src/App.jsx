@@ -342,6 +342,7 @@ export default function App({ session }) {
   const [subscriptionStatus, setSubscriptionStatus] = useState('active');
   const [trialEndsAt, setTrialEndsAt] = useState(null);
   const [selectedOrigem, setSelectedOrigem] = useState('all');
+  const [allCompanies, setAllCompanies] = useState([]);
 
   // Modal de Reatribuição em Massa de Carteira
   const [showReassignModal, setShowReassignModal] = useState(false);
@@ -1927,7 +1928,8 @@ export default function App({ session }) {
 
   const getCampFilteredLeadsList = () => {
     try {
-      const saLeads = (allCompanies || []).map(c => ({
+      const safeCompanies = Array.isArray(allCompanies) ? allCompanies : [];
+      const saLeads = safeCompanies.map(c => ({
         id: c.id,
         empresa: c.name,
         contato: c.name,
