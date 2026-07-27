@@ -341,11 +341,13 @@ export default function App({ session }) {
   const [selectedSeller, setSelectedSeller] = useState('all');
   const [subscriptionStatus, setSubscriptionStatus] = useState('active');
   const [trialEndsAt, setTrialEndsAt] = useState(null);
-  // SuperAdmin: lista e empresa selecionada
-  const [allCompanies, setAllCompanies] = useState([]);
-  const [superAdminCompanyId, setSuperAdminCompanyId] = useState('');
-  
   const [selectedOrigem, setSelectedOrigem] = useState('all');
+
+  // Modal de Reatribuição em Massa de Carteira
+  const [showReassignModal, setShowReassignModal] = useState(false);
+  const [reassignFromUserId, setReassignFromUserId] = useState('');
+  const [reassignToUserId, setReassignToUserId] = useState('');
+  const [isReassigning, setIsReassigning] = useState(false);
 
   const [leadNotes, setLeadNotes] = useState([]);
   const [newNote, setNewNote] = useState('');
@@ -1711,6 +1713,67 @@ export default function App({ session }) {
     }
   };
 
+  const handleBulkReassignLeads = async () => {
+    if (!reassignFromUserId || !reassignToUserId) {
+      alert('Por favor, selecione o vendedor de origem e o vendedor de destino.');
+      return;
+    }
+    if (reassignFromUserId === reassignToUserId) {
+      alert('O vendedor de origem e destino devem ser diferentes.');
+      return;
+    }
+
+    const fromMember = teamMembers.find(m => m.id === reassignFromUserId);
+    const toMember = teamMembers.find(m => m.id === reassignToUserId);
+    const fromName = fromMember ? fromMember.email : 'vendedor de origem';
+    const toName = toMember ? toMember.email : 'vendedor de destino';
+
+    const activeId = userRole === 'superadmin' ? selectedConfigCompanyId : companyId;
+    if (!activeId) return;
+
+    // Busca quantidade de leads a reatribuir
+    const { count } = await supabase
+      .from('leads')
+      .select('id', { count: 'exact', head: true })
+      .eq('company_id', activeId)
+      .eq('user_id', reassignFromUserId);
+
+    if (!count || count === 0) {
+      alert(`O vendedor ${fromName} não possui nenhum lead na carteira atual.`);
+      return;
+    }
+
+    if (!window.confirm(`Tem certeza que deseja transferir TODOS os ${count} clientes da carteira de "${fromName}" para "${toName}"?`)) {
+      return;
+    }
+
+    setIsReassigning(true);
+    try {
+      const nowIso = new Date().toISOString();
+      const { data, error } = await supabase
+        .from('leads')
+        .update({
+          user_id: reassignToUserId,
+          data_movimentacao: nowIso
+        })
+        .eq('company_id', activeId)
+        .eq('user_id', reassignFromUserId)
+        .select();
+
+      if (error) throw error;
+
+      alert(`🎉 Sucesso! ${(data || []).length} clientes foram transferidos da carteira de ${fromName} para ${toName}!`);
+      setShowReassignModal(false);
+      setReassignFromUserId('');
+      setReassignToUserId('');
+      fetchLeads(activeId);
+    } catch (err) {
+      alert('Erro ao transferir carteira: ' + err.message);
+    } finally {
+      setIsReassigning(false);
+    }
+  };
+
   const getLeadSlaStatus = (card) => {
     if (card.retido_gestor) return { type: 'retido', label: '🛑 Retido pelo Gestor (2 Rodízios)' };
     if (card.in_bolsao) return { type: 'bolsao', label: '💼 No Bolsão (Aguardando Resgate)' };
@@ -2432,6 +2495,17 @@ export default function App({ session }) {
                 title="Relatório de Atendimento Corretor vs SLA"
               >
                 📊 SLA Corretores
+              </button>
+            )}
+
+            {/* 🔄 Transferir Carteira */}
+            {(userRole === 'admin' || userRole === 'superadmin') && (
+              <button
+                onClick={() => setShowReassignModal(true)}
+                className="bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 font-bold px-3 py-2 rounded-xl text-xs flex items-center gap-1 shadow-xs transition-all cursor-pointer"
+                title="Transferir Carteira de Clientes em Massa de um vendedor para outro"
+              >
+                🔄 Transferir Carteira
               </button>
             )}
 
@@ -4553,6 +4627,95 @@ export default function App({ session }) {
             <div className="pt-3 border-t border-slate-100 flex justify-end">
               <button onClick={() => setShowBolsaoModal(false)} className="px-5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition-colors cursor-pointer">
                 Fechar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL DE REATRIBUIÇÃO EM MASSA DE CARTEIRA DE CLIENTES */}
+      {showReassignModal && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fade-in">
+          <div className="bg-white rounded-3xl shadow-2xl max-w-xl w-full p-6 space-y-5">
+            <div className="flex justify-between items-center pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-2">
+                <span className="text-2xl">🔄</span>
+                <div>
+                  <h3 className="text-lg font-black text-slate-800">Transferência de Carteira em Massa</h3>
+                  <p className="text-xs text-slate-500">Reatribua todos os clientes de um vendedor desligado para outro membro da equipe.</p>
+                </div>
+              </div>
+              <button onClick={() => setShowReassignModal(false)} className="text-slate-400 hover:text-slate-600 font-bold text-lg cursor-pointer">✕</button>
+            </div>
+
+            <div className="bg-blue-50 border border-blue-200 rounded-2xl p-4 space-y-2 text-xs text-blue-900">
+              <p className="font-bold flex items-center gap-1.5 text-blue-800">
+                <span>💡</span> Dica de Gestão:
+              </p>
+              <p>
+                Utilize esta ferramenta caso um vendedor saia da empresa ou mude de função. Todos os leads pertencentes ao vendedor de origem serão transferidos de forma imediata e limpa para o novo responsável.
+              </p>
+            </div>
+
+            <div className="space-y-4 text-left">
+              {/* Vendedor de Origem */}
+              <div className="space-y-1.5">
+                <label className="block text-xs font-black text-slate-600 uppercase tracking-wider">
+                  1. Vendedor de Origem (Saindo / Desligado):
+                </label>
+                <select
+                  value={reassignFromUserId}
+                  onChange={(e) => setReassignFromUserId(e.target.value)}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm font-semibold text-slate-700 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer transition-all"
+                >
+                  <option value="">-- Selecione o Vendedor de Origem --</option>
+                  {teamMembers.map(m => {
+                    const leadCount = columns.flatMap(col => col.cards.filter(c => c.user_id === m.id)).length;
+                    return (
+                      <option key={m.id} value={m.id}>
+                        {m.email} {m.id === session?.user?.id ? '(Você - Gestor)' : ''} — [{leadCount} leads na carteira]
+                      </option>
+                    );
+                  })}
+                </select>
+              </div>
+
+              {/* Vendedor de Destino */}
+              <div className="space-y-1.5">
+                <label className="block text-xs font-black text-slate-600 uppercase tracking-wider">
+                  2. Vendedor de Destino (Novo Responsável):
+                </label>
+                <select
+                  value={reassignToUserId}
+                  onChange={(e) => setReassignToUserId(e.target.value)}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm font-semibold text-slate-700 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer transition-all"
+                >
+                  <option value="">-- Selecione o Novo Vendedor Responsável --</option>
+                  {teamMembers.map(m => (
+                    <option key={m.id} value={m.id} disabled={m.id === reassignFromUserId}>
+                      {m.email} {m.id === session?.user?.id ? '(Você - Gestor)' : ''}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <div className="pt-4 border-t border-slate-100 flex justify-end gap-3">
+              <button 
+                type="button"
+                onClick={() => setShowReassignModal(false)}
+                className="px-5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition-colors cursor-pointer"
+                disabled={isReassigning}
+              >
+                Cancelar
+              </button>
+              <button 
+                type="button"
+                onClick={handleBulkReassignLeads}
+                disabled={!reassignFromUserId || !reassignToUserId || reassignFromUserId === reassignToUserId || isReassigning}
+                className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-40 text-white font-black text-xs rounded-xl transition-all shadow-md shadow-indigo-600/10 cursor-pointer flex items-center gap-2"
+              >
+                {isReassigning ? 'Transferindo...' : '🚀 Transferir Carteira Agora'}
               </button>
             </div>
           </div>
