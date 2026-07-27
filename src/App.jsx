@@ -1823,9 +1823,9 @@ export default function App({ session }) {
       const results = [];
       const seen = new Set();
 
-      // 1. Tentar primeiro o nosso Servidor VPS dedicado
+      // 1. Tentar primeiro o nosso Servidor VPS dedicado (HTTPS com CORS)
       try {
-        const vpsRes = await fetch('http://187.77.243.166:3001/api/scrape-gmaps', {
+        const vpsRes = await fetch('https://app.nexalecrm.com.br/api/scrape-gmaps', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ keyword, location })
