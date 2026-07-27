@@ -354,6 +354,7 @@ export default function App({ session }) {
   const [b2bTab, setB2bTab] = useState('gmaps');
   const [gmapsKeyword, setGmapsKeyword] = useState('');
   const [gmapsLocation, setGmapsLocation] = useState('');
+  const [gmapsPasteText, setGmapsPasteText] = useState('');
   const [gmapsResults, setGmapsResults] = useState([]);
   const [gmapsSelectedIds, setGmapsSelectedIds] = useState([]);
   const [isSearchingGMaps, setIsSearchingGMaps] = useState(false);
@@ -1912,6 +1913,72 @@ export default function App({ session }) {
     } finally {
       setIsSearchingGMaps(false);
     }
+  };
+
+  const handleParseGMapsText = () => {
+    if (!gmapsPasteText.trim()) {
+      alert('Cole o texto da página ou lista de resultados do Google Maps na caixa.');
+      return;
+    }
+
+    const lines = gmapsPasteText.split('\n').map(l => l.trim()).filter(Boolean);
+    const parsedResults = [];
+    const seen = new Set();
+
+    let currentLead = null;
+
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+
+      const phoneMatch = line.match(/(?:\+?55\s?)?(?:\(?([1-9]{2})\)?\s?)?(?:9\d{4}|\d{4})[-\s]?\d{4}/);
+      const isRating = line.match(/\d,\d\s*\(\d+\)/) || line.includes('Nenhuma avaliação') || line.includes('avaliação');
+      const isHours = line.includes('Aberto') || line.includes('Fechado') || line.includes('Fecha ');
+
+      if (phoneMatch && currentLead) {
+        let clean = phoneMatch[0].replace(/\D/g, '');
+        if (clean.length === 10 || clean.length === 11) clean = '55' + clean;
+        currentLead.telefone = clean;
+        currentLead.telefoneRaw = phoneMatch[0];
+      } else if (isRating && currentLead) {
+        currentLead.rating = line;
+      } else if (isHours) {
+        // ignora
+      } else if (line.length >= 3 && line.length < 90 && !isRating && !phoneMatch) {
+        if (currentLead && !currentLead.endereco && (line.includes('Av.') || line.includes('Rua') || line.includes('Alameda') || line.includes('Academia') || line.includes('Gravataí') || line.includes('·'))) {
+          currentLead.endereco = line;
+        } else if (!line.includes('Resultados') && !line.includes('Compartilhar') && !line.includes('Filtros') && !line.includes('Classificação') && !line.includes('Horas')) {
+          if (currentLead && currentLead.empresa && !seen.has(currentLead.empresa.toLowerCase())) {
+            seen.add(currentLead.empresa.toLowerCase());
+            parsedResults.push(currentLead);
+          }
+          currentLead = {
+            id: `gmaps-parse-${parsedResults.length + 1}`,
+            empresa: line,
+            contato: line,
+            telefone: '',
+            telefoneRaw: 'Não informado',
+            endereco: '',
+            categoria: 'Google Maps Place',
+            origem: 'Google Maps B2B'
+          };
+        }
+      }
+    }
+
+    if (currentLead && currentLead.empresa && !seen.has(currentLead.empresa.toLowerCase())) {
+      seen.add(currentLead.empresa.toLowerCase());
+      parsedResults.push(currentLead);
+    }
+
+    if (parsedResults.length === 0) {
+      alert('Não foi possível identificar estabelecimentos no texto colado. Certifique-se de copiar os resultados diretamente da tela do Google Maps.');
+      return;
+    }
+
+    setGmapsResults(parsedResults);
+    setGmapsSelectedIds(parsedResults.map(r => r.id));
+    setB2bTab('gmaps');
+    alert(`🎉 ${parsedResults.length} empresas do Google Maps foram extraídas com sucesso!`);
   };
 
   const handleImportGMapsLeads = async (destination = 'kanban') => {
@@ -4662,18 +4729,24 @@ export default function App({ session }) {
             </div>
 
             {/* Alternador de Abas */}
-            <div className="flex bg-slate-100 p-1 rounded-xl mb-4 gap-1">
+            <div className="flex bg-slate-100 p-1 rounded-xl mb-4 gap-1 overflow-x-auto">
               <button 
                 onClick={() => setB2bTab('gmaps')} 
-                className={`flex-1 py-2 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${b2bTab === 'gmaps' ? 'bg-white text-purple-700 shadow-sm font-black' : 'text-slate-500 hover:text-slate-800'}`}
+                className={`px-3 py-2 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 whitespace-nowrap ${b2bTab === 'gmaps' ? 'bg-white text-purple-700 shadow-sm font-black' : 'text-slate-500 hover:text-slate-800'}`}
               >
-                📍 Google Maps B2B (WA Sender)
+                📍 Busca Automática
+              </button>
+              <button 
+                onClick={() => setB2bTab('gmaps_paste')} 
+                className={`px-3 py-2 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 whitespace-nowrap ${b2bTab === 'gmaps_paste' ? 'bg-white text-purple-700 shadow-sm font-black' : 'text-slate-500 hover:text-slate-800'}`}
+              >
+                📋 Copiar & Colar do Google Maps (Ilimitado)
               </button>
               <button 
                 onClick={() => setB2bTab('cnpj')} 
-                className={`flex-1 py-2 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${b2bTab === 'cnpj' ? 'bg-white text-purple-700 shadow-sm font-black' : 'text-slate-500 hover:text-slate-800'}`}
+                className={`px-3 py-2 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 whitespace-nowrap ${b2bTab === 'cnpj' ? 'bg-white text-purple-700 shadow-sm font-black' : 'text-slate-500 hover:text-slate-800'}`}
               >
-                🏢 Importador Híbrido CNPJ (Casa dos Dados)
+                🏢 Importador CNPJ (Casa dos Dados)
               </button>
             </div>
 
@@ -4779,7 +4852,39 @@ export default function App({ session }) {
               </div>
             )}
 
-            {/* CONTEÚDO ABA 2: CNPJ CASA DOS DADOS */}
+            {/* CONTEÚDO ABA 2: COPIAR E COLAR DO GOOGLE MAPS */}
+            {b2bTab === 'gmaps_paste' && (
+              <div className="space-y-4">
+                <div className="bg-purple-50 border border-purple-100 p-3 rounded-xl flex items-center justify-between">
+                  <div>
+                    <p className="text-xs font-bold text-purple-900">🚀 Modo Extração Completa do Google Maps</p>
+                    <p className="text-[11px] text-purple-700">Pesquise no Google Maps, selecione todo o texto dos resultados e cole abaixo.</p>
+                  </div>
+                  <a 
+                    href={`https://www.google.com/maps/search/${encodeURIComponent((gmapsKeyword || 'academia') + ' ' + (gmapsLocation || 'gravatai'))}`}
+                    target="_blank" 
+                    rel="noreferrer"
+                    className="px-3 py-1.5 bg-purple-600 hover:bg-purple-700 text-slate-900 text-xs font-bold rounded-lg transition-all shadow-sm flex items-center gap-1 shrink-0"
+                  >
+                    🔗 Abrir Google Maps
+                  </a>
+                </div>
+                <textarea 
+                  value={gmapsPasteText}
+                  onChange={(e) => setGmapsPasteText(e.target.value)}
+                  className="w-full h-44 border border-slate-300 rounded-xl p-3 text-xs focus:outline-none focus:ring-2 focus:ring-purple-500 font-mono text-slate-700 bg-white"
+                  placeholder="Cole aqui o texto copiado da lista do Google Maps..."
+                ></textarea>
+                <div className="flex justify-end gap-3">
+                  <button type="button" onClick={() => setShowScraperModal(false)} className="px-4 py-2 text-xs font-bold text-slate-500 hover:bg-slate-100 rounded-lg">Cancelar</button>
+                  <button type="button" onClick={handleParseGMapsText} className="px-5 py-2.5 text-xs font-bold text-slate-900 bg-purple-600 hover:bg-purple-700 rounded-xl shadow-md transition-all flex items-center gap-2">
+                    📋 Extrair Empresas do Texto
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* CONTEÚDO ABA 3: CNPJ CASA DOS DADOS */}
             {b2bTab === 'cnpj' && (
               <div className="space-y-4">
                 <p className="text-xs text-slate-500">
