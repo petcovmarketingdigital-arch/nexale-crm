@@ -1,4 +1,4 @@
-import { StrictMode, useState, useEffect } from 'react'
+import React, { Component, StrictMode, useState, useEffect } from 'react'
 import { createRoot } from 'react-dom/client'
 import './index.css'
 import App from './App.jsx'
@@ -6,6 +6,56 @@ import Auth from './Auth.jsx'
 import CaptacaoPage from './CaptacaoPage.jsx'
 import { supabase } from './supabaseClient'
 
+// ─── Global Error Boundary (Impede Tela Branca em Qualquer Caso) ───────────────
+class GlobalErrorBoundary extends Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+
+  static getDerivedStateFromError(error) {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error, errorInfo) {
+    console.error("🔥 Global Error Boundary capturou um erro:", error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="min-h-screen bg-slate-900 text-white flex flex-col items-center justify-center p-6 text-center font-sans">
+          <div className="bg-slate-800 p-8 rounded-2xl shadow-2xl max-w-lg w-full border border-slate-700">
+            <div className="w-16 h-16 bg-purple-500/20 text-purple-400 rounded-full flex items-center justify-center mx-auto mb-4 text-3xl font-black">
+              ⚡
+            </div>
+            <h1 className="text-2xl font-black mb-2">Nexale CRM — Atualização de Sistema</h1>
+            <p className="text-slate-400 text-xs mb-4">
+              Uma nova versão foi implantada. Clique no botão abaixo para recarregar o sistema com a versão mais recente.
+            </p>
+            <div className="p-3 bg-slate-950 rounded-xl text-left font-mono text-[11px] text-purple-300 mb-6 overflow-x-auto max-h-32 border border-slate-800">
+              {this.state.error?.toString() || 'Atualização necessária'}
+            </div>
+            <button 
+              onClick={() => {
+                if ('serviceWorker' in navigator) {
+                  navigator.serviceWorker.getRegistrations().then(registrations => {
+                    registrations.forEach(r => r.unregister());
+                  });
+                }
+                window.location.reload(true);
+              }}
+              className="w-full py-3 bg-purple-600 hover:bg-purple-500 text-white font-bold rounded-xl text-sm transition-all shadow-lg shadow-purple-600/30 cursor-pointer"
+            >
+              🔄 Recarregar Sistema Agora
+            </button>
+          </div>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 // ─── Rota pública /captar/:vendedorId ─────────────────────────────────────────
 const captacaoMatch = window.location.pathname.match(/^\/captar\/([^/]+)$/);
@@ -13,11 +63,12 @@ if (captacaoMatch) {
   const vendedorId = captacaoMatch[1];
   createRoot(document.getElementById('root')).render(
     <StrictMode>
-      <CaptacaoPage vendedorId={vendedorId} />
+      <GlobalErrorBoundary>
+        <CaptacaoPage vendedorId={vendedorId} />
+      </GlobalErrorBoundary>
     </StrictMode>
   );
 } else {
-
 
 const isInitialRecovery = typeof window !== 'undefined' && (window.location.hash.includes('type=recovery') || window.location.href.includes('type=recovery'));
 
@@ -101,7 +152,9 @@ function Root() {
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>
-    <Root />
+    <GlobalErrorBoundary>
+      <Root />
+    </GlobalErrorBoundary>
   </StrictMode>,
 )
 } // fim do else (rota não é /captar)
