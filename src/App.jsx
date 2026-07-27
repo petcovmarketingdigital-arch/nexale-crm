@@ -1806,6 +1806,102 @@ export default function App({ session }) {
     }
   };
 
+  const handleSearchGMaps = async () => {
+    if (!gmapsKeyword.trim() || !gmapsLocation.trim()) {
+      alert('Informe a palavra-chave/segmento e a cidade/localidade para pesquisar.');
+      return;
+    }
+
+    setIsSearchingGMaps(true);
+    setGmapsResults([]);
+    setGmapsSelectedIds([]);
+
+    try {
+      const isLocal = ['localhost', '127.0.0.1'].includes(window.location.hostname);
+      const apiEndpoint = isLocal 
+        ? 'http://187.77.243.166:3001/api/scrape-gmaps'
+        : `${window.location.origin}/api/scrape-gmaps`;
+
+      const response = await fetch(apiEndpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          keyword: gmapsKeyword.trim(),
+          location: gmapsLocation.trim()
+        })
+      });
+
+      if (!response.ok) throw new Error('Falha ao conectar com o robô extrator de B2B.');
+
+      const data = await response.json();
+      if (data.success && Array.isArray(data.results)) {
+        setGmapsResults(data.results);
+        setGmapsSelectedIds(data.results.map(r => r.id));
+        if (data.results.length === 0) {
+          alert(`Nenhum estabelecimento encontrado para "${gmapsKeyword}" em "${gmapsLocation}". Tente ajustar o termo de busca.`);
+        }
+      } else {
+        alert(data.error || 'Nenhum resultado encontrado.');
+      }
+    } catch (err) {
+      console.error('Erro na captação B2B Google Maps:', err);
+      alert('Erro na captação B2B: ' + err.message);
+    } finally {
+      setIsSearchingGMaps(false);
+    }
+  };
+
+  const handleImportGMapsLeads = async (destination = 'kanban') => {
+    const selectedLeads = gmapsResults.filter(r => gmapsSelectedIds.includes(r.id));
+    if (selectedLeads.length === 0) {
+      alert('Selecione ao menos uma empresa para importar.');
+      return;
+    }
+
+    const activeCompId = userRole === 'superadmin' ? selectedConfigCompanyId : companyId;
+    if (!activeCompId) return;
+
+    if (destination === 'campanha') {
+      const lines = selectedLeads.map(l => `${l.telefone || ''}|${l.empresa}`).join('\n');
+      setCampExternalList(prev => (prev ? prev + '\n' + lines : lines));
+      setCampTab('externa');
+      setCurrentView('campanha');
+      setShowScraperModal(false);
+      alert(`🎉 ${selectedLeads.length} empresas importadas diretamente para a sua Fila de Disparo em Campanhas!`);
+      return;
+    }
+
+    try {
+      const nowIso = new Date().toISOString();
+      const leadsToInsert = selectedLeads.map(l => ({
+        company_id: activeCompId,
+        user_id: session.user.id,
+        empresa: l.empresa,
+        contato: l.contato,
+        telefone: l.telefone || 'Não informado',
+        origem: 'Google Maps B2B',
+        coluna: 'leads',
+        temperatura: 'Morno',
+        observacao: `Endereço: ${l.endereco || 'Não informado'} | Categoria: ${l.categoria || ''} | Site: ${l.website || ''}`,
+        dados_nicho: {
+          website: l.website,
+          categoria: l.categoria,
+          endereco: l.endereco
+        },
+        data_criacao: nowIso
+      }));
+
+      const { error } = await supabase.from('leads').insert(leadsToInsert);
+      if (error) throw error;
+
+      alert(`🚀 Sucesso! ${selectedLeads.length} empresas do Google Maps foram salvas diretamente na coluna de Entrada do seu Kanban!`);
+      setShowScraperModal(false);
+      fetchLeads(userRole, selectedSeller, activeCompId);
+    } catch (err) {
+      alert('Erro ao importar leads para o Kanban: ' + err.message);
+    }
+  };
+
   const getLeadSlaStatus = (card) => {
     if (card.retido_gestor) return { type: 'retido', label: '🛑 Retido pelo Gestor (2 Rodízios)' };
     if (card.in_bolsao) return { type: 'bolsao', label: '💼 No Bolsão (Aguardando Resgate)' };
