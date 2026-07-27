@@ -3675,10 +3675,10 @@ export default function App({ session }) {
             <h3 className="text-lg font-bold text-red-800 mb-1">Ops! Erro ao carregar Campanhas</h3>
             <p className="text-xs text-slate-500 mb-4">{renderErr?.message || 'Ocorreu uma falha temporária ao ler os dados.'}</p>
             <button 
-              onClick={() => { setCampTab('crm'); fetchCampaignQueue(); }} 
+              onClick={() => { window.location.reload(); }} 
               className="px-4 py-2 bg-orange-500 hover:bg-orange-600 text-slate-900 font-bold text-xs rounded-xl shadow-sm cursor-pointer transition-all"
             >
-              🔄 Recarregar Tela de Campanhas
+              🔄 Recarregar e Atualizar Sistema
             </button>
           </div>
         );
