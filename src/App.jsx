@@ -344,12 +344,19 @@ export default function App({ session }) {
   const [selectedOrigem, setSelectedOrigem] = useState('all');
   const [allCompanies, setAllCompanies] = useState([]);
 
-  // Modal de Reatribuição em Massa de Carteira
   const [showReassignModal, setShowReassignModal] = useState(false);
   const [reassignFromUserId, setReassignFromUserId] = useState('');
   const [reassignToUserId, setReassignToUserId] = useState('');
   const [deleteFromUserAccount, setDeleteFromUserAccount] = useState(false);
   const [isReassigning, setIsReassigning] = useState(false);
+
+  // Captação B2B Google Maps & CNPJ
+  const [b2bTab, setB2bTab] = useState('gmaps');
+  const [gmapsKeyword, setGmapsKeyword] = useState('');
+  const [gmapsLocation, setGmapsLocation] = useState('');
+  const [gmapsResults, setGmapsResults] = useState([]);
+  const [gmapsSelectedIds, setGmapsSelectedIds] = useState([]);
+  const [isSearchingGMaps, setIsSearchingGMaps] = useState(false);
 
   const [leadNotes, setLeadNotes] = useState([]);
   const [newNote, setNewNote] = useState('');
@@ -4470,29 +4477,170 @@ export default function App({ session }) {
       )}
 
       {showScraperModal && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50 animate-fade-in">
-          <div className="bg-white rounded-xl shadow-xl max-w-lg w-full p-6 border border-slate-100">
-            <h3 className="text-lg font-bold text-slate-800 mb-2">⚡ Captação Híbrida B2B</h3>
-            <p className="text-xs text-slate-500 mb-4">
-              1. Acesse o <a href="https://casadosdados.com.br/solucao/cnpj/pesquisa-avancada" target="_blank" rel="noreferrer" className="text-indigo-600 underline font-bold">Casa dos Dados</a> e pesquise as empresas. <br/>
-              2. Selecione e <strong>copie todo o texto</strong> da página de resultados e cole na caixa abaixo:
-            </p>
-            <div className="mb-4">
-              <label className="block text-xs font-bold text-slate-600 uppercase mb-1">Perfil dos Leads a Importar</label>
-              <input list="perfis" value={scraperPerfil} onChange={e => setScraperPerfil(e.target.value)} className="w-full border border-slate-300 rounded-lg p-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 bg-white" placeholder="Ex: B2B" />
-            </div>
-            <textarea 
-              value={scraperText}
-              onChange={(e) => setScraperText(e.target.value)}
-              className="w-full h-32 border border-slate-300 rounded-lg p-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 mb-4 font-mono text-xs"
-              placeholder="Cole o texto aqui... O sistema vai caçar os CNPJs automaticamente!"
-            ></textarea>
-            <div className="flex justify-end gap-3">
-              <button type="button" onClick={() => setShowScraperModal(false)} className="px-4 py-2 text-sm font-medium text-slate-500 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer" disabled={isScraping}>Cancelar</button>
-              <button type="button" onClick={handleScrape} className="px-4 py-2 text-sm font-medium text-slate-900 bg-purple-600 hover:bg-purple-700 rounded-lg transition-colors shadow-sm shadow-indigo-900/5 cursor-pointer flex items-center gap-2" disabled={isScraping}>
-                {isScraping ? 'Enriquecendo dados...' : 'Extrair e Importar'}
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fade-in">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-3xl w-full p-6 border border-slate-100 max-h-[90vh] flex flex-col">
+            
+            {/* Cabeçalho */}
+            <div className="flex items-center justify-between pb-4 border-b border-slate-100 mb-4">
+              <div>
+                <h3 className="text-xl font-black text-slate-800 flex items-center gap-2">
+                  ⚡ Captação de Leads B2B (Estilo WA Sender)
+                </h3>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Extraia contatos comerciais do Google Maps ou de listas de CNPJ para prospecção no WhatsApp.
+                </p>
+              </div>
+              <button 
+                onClick={() => setShowScraperModal(false)} 
+                className="text-slate-400 hover:text-slate-600 bg-slate-100 rounded-full w-8 h-8 flex items-center justify-center transition-colors font-bold"
+              >
+                ✕
               </button>
             </div>
+
+            {/* Alternador de Abas */}
+            <div className="flex bg-slate-100 p-1 rounded-xl mb-4 gap-1">
+              <button 
+                onClick={() => setB2bTab('gmaps')} 
+                className={`flex-1 py-2 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${b2bTab === 'gmaps' ? 'bg-white text-purple-700 shadow-sm font-black' : 'text-slate-500 hover:text-slate-800'}`}
+              >
+                📍 Google Maps B2B (WA Sender)
+              </button>
+              <button 
+                onClick={() => setB2bTab('cnpj')} 
+                className={`flex-1 py-2 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${b2bTab === 'cnpj' ? 'bg-white text-purple-700 shadow-sm font-black' : 'text-slate-500 hover:text-slate-800'}`}
+              >
+                🏢 Importador Híbrido CNPJ (Casa dos Dados)
+              </button>
+            </div>
+
+            {/* CONTEÚDO ABA 1: GOOGLE MAPS */}
+            {b2bTab === 'gmaps' && (
+              <div className="flex-1 overflow-y-auto space-y-4 pr-1 minimal-scrollbar">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 bg-purple-50/50 p-4 rounded-xl border border-purple-100">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
+                      1. Palavra-Chave / Segmento:
+                    </label>
+                    <input 
+                      type="text" 
+                      value={gmapsKeyword} 
+                      onChange={e => setGmapsKeyword(e.target.value)} 
+                      placeholder="Ex: Lojas de Tintas, Academias, Restaurantes" 
+                      className="w-full border border-slate-200 rounded-xl p-2.5 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-purple-500 bg-white"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
+                      2. Cidade / Estado:
+                    </label>
+                    <input 
+                      type="text" 
+                      value={gmapsLocation} 
+                      onChange={e => setGmapsLocation(e.target.value)} 
+                      placeholder="Ex: São Paulo, SP ou Campinas" 
+                      className="w-full border border-slate-200 rounded-xl p-2.5 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-purple-500 bg-white"
+                    />
+                  </div>
+                  <div className="sm:col-span-2 flex justify-end">
+                    <button 
+                      onClick={handleSearchGMaps} 
+                      disabled={isSearchingGMaps} 
+                      className="w-full sm:w-auto px-5 py-2.5 bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-slate-900 text-xs font-black rounded-xl transition-all shadow-md shadow-purple-600/20 flex items-center justify-center gap-2 cursor-pointer"
+                    >
+                      {isSearchingGMaps ? '⏳ Raspando Google Maps...' : '🔍 Buscar Empresas no Google Maps'}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Tabela de Resultados do Google Maps */}
+                {gmapsResults.length > 0 && (
+                  <div className="space-y-3 border-t border-slate-100 pt-3">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-slate-700">
+                        {gmapsResults.length} empresas encontradas ({gmapsSelectedIds.length} selecionadas)
+                      </span>
+                      <button 
+                        onClick={() => {
+                          if (gmapsSelectedIds.length === gmapsResults.length) setGmapsSelectedIds([]);
+                          else setGmapsSelectedIds(gmapsResults.map(r => r.id));
+                        }} 
+                        className="text-xs font-bold text-purple-600 hover:text-purple-700"
+                      >
+                        {gmapsSelectedIds.length === gmapsResults.length ? 'Desmarcar Todas' : 'Selecionar Todas'}
+                      </button>
+                    </div>
+
+                    <div className="max-h-60 overflow-y-auto space-y-2 border border-slate-200 rounded-xl p-2 bg-slate-50/50">
+                      {gmapsResults.map(res => (
+                        <label 
+                          key={res.id} 
+                          className={`flex items-start gap-3 p-3 rounded-xl border transition-all cursor-pointer ${gmapsSelectedIds.includes(res.id) ? 'bg-purple-50/70 border-purple-200 shadow-2xs' : 'bg-white border-slate-100 hover:border-slate-200'}`}
+                        >
+                          <input 
+                            type="checkbox" 
+                            checked={gmapsSelectedIds.includes(res.id)} 
+                            onChange={() => {
+                              setGmapsSelectedIds(prev => prev.includes(res.id) ? prev.filter(x => x !== res.id) : [...prev, res.id]);
+                            }} 
+                            className="mt-1 accent-purple-600" 
+                          />
+                          <div className="min-w-0 flex-1 space-y-0.5">
+                            <p className="text-xs font-extrabold text-slate-800 truncate">{res.empresa}</p>
+                            <p className="text-[11px] font-mono font-bold text-purple-700">
+                              📞 {res.telefone ? (res.telefone.startsWith('55') ? `+${res.telefone}` : res.telefone) : 'Telefone não informado'}
+                            </p>
+                            <p className="text-[10px] text-slate-500 truncate">📍 {res.endereco}</p>
+                          </div>
+                        </label>
+                      ))}
+                    </div>
+
+                    {/* Botões de Ação */}
+                    <div className="flex flex-col sm:flex-row gap-2 pt-2">
+                      <button 
+                        onClick={() => handleImportGMapsLeads('kanban')} 
+                        className="flex-1 py-3 bg-emerald-600 hover:bg-emerald-700 text-slate-900 text-xs font-black rounded-xl transition-all shadow-md shadow-emerald-600/20 flex items-center justify-center gap-1.5 cursor-pointer"
+                      >
+                        📋 Importar {gmapsSelectedIds.length} para o Kanban
+                      </button>
+                      <button 
+                        onClick={() => handleImportGMapsLeads('campanha')} 
+                        className="flex-1 py-3 bg-orange-500 hover:bg-orange-600 text-slate-900 text-xs font-black rounded-xl transition-all shadow-md shadow-orange-500/20 flex items-center justify-center gap-1.5 cursor-pointer"
+                      >
+                        🚀 Enviar {gmapsSelectedIds.length} para Disparo de Campanhas
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* CONTEÚDO ABA 2: CNPJ CASA DOS DADOS */}
+            {b2bTab === 'cnpj' && (
+              <div className="space-y-4">
+                <p className="text-xs text-slate-500">
+                  1. Acesse o <a href="https://casadosdados.com.br/solucao/cnpj/pesquisa-avancada" target="_blank" rel="noreferrer" className="text-indigo-600 underline font-bold">Casa dos Dados</a> e pesquise as empresas. <br/>
+                  2. Selecione e <strong>copie todo o texto</strong> da página de resultados e cole na caixa abaixo:
+                </p>
+                <div>
+                  <label className="block text-xs font-bold text-slate-600 uppercase mb-1">Perfil dos Leads a Importar</label>
+                  <input list="perfis" value={scraperPerfil} onChange={e => setScraperPerfil(e.target.value)} className="w-full border border-slate-300 rounded-lg p-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 bg-white" placeholder="Ex: B2B" />
+                </div>
+                <textarea 
+                  value={scraperText}
+                  onChange={(e) => setScraperText(e.target.value)}
+                  className="w-full h-32 border border-slate-300 rounded-lg p-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 font-mono text-xs"
+                  placeholder="Cole o texto aqui... O sistema vai caçar os CNPJs automaticamente!"
+                ></textarea>
+                <div className="flex justify-end gap-3">
+                  <button type="button" onClick={() => setShowScraperModal(false)} className="px-4 py-2 text-sm font-medium text-slate-500 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer" disabled={isScraping}>Cancelar</button>
+                  <button type="button" onClick={handleScrape} className="px-4 py-2 text-sm font-medium text-slate-900 bg-purple-600 hover:bg-purple-700 rounded-lg transition-colors shadow-sm shadow-indigo-900/5 cursor-pointer flex items-center gap-2" disabled={isScraping}>
+                    {isScraping ? 'Enriquecendo dados...' : 'Extrair e Importar CNPJs'}
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}

@@ -115,6 +115,76 @@ app.post('/api/check-whatsapp', async (req, res) => {
   }
 });
 
+// Endpoint de Captação B2B Google Maps (Estilo WA Sender)
+app.post('/api/scrape-gmaps', async (req, res) => {
+  try {
+    const { keyword, location } = req.body;
+    if (!keyword || !location) {
+      return res.status(400).json({ error: 'Informe a palavra-chave/segmento e a cidade/localidade.' });
+    }
+
+    let kwClean = keyword.trim();
+    if (kwClean.toLowerCase().endsWith('s') && !kwClean.toLowerCase().endsWith('is')) {
+      kwClean = kwClean.slice(0, -1);
+    }
+
+    const queries = [
+      `${kwClean} ${location}`,
+      `${keyword} ${location}`,
+      `${location} ${kwClean}`
+    ];
+
+    const results = [];
+    const seen = new Set();
+
+    for (const q of queries) {
+      try {
+        const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(q)}&countrycodes=br&addressdetails=1&extratags=1&limit=50`;
+        const resNom = await fetch(url, { headers: { 'User-Agent': 'NexaleCRM-B2B-Scraper/1.0 (contact@nexalecrm.com.br)' } });
+        if (resNom.ok) {
+          const data = await resNom.json();
+          (data || []).forEach(item => {
+            const tags = item.extratags || {};
+            const addr = item.address || {};
+            const name = item.name || (item.display_name ? item.display_name.split(',')[0] : '');
+            const phone = tags.phone || tags['contact:phone'] || tags['contact:mobile'] || tags['mobile'] || '';
+
+            let cleanPhone = phone ? phone.split(';')[0].replace(/\D/g, '') : '';
+            if (cleanPhone && (cleanPhone.length === 10 || cleanPhone.length === 11)) {
+              cleanPhone = '55' + cleanPhone;
+            }
+
+            const street = addr.road ? `${addr.road} ${addr.house_number || ''}` : '';
+            const city = addr.city || addr.town || addr.municipality || location;
+
+            if (name && !seen.has(name.toLowerCase())) {
+              seen.add(name.toLowerCase());
+              results.push({
+                id: `gmaps-${item.place_id}`,
+                empresa: name,
+                contato: name,
+                telefone: cleanPhone,
+                telefoneRaw: phone || 'Não informado',
+                endereco: street ? `${street}, ${city}` : (item.display_name || location),
+                categoria: item.type || item.class || keyword,
+                website: tags.website || tags['contact:website'] || '',
+                origem: 'Google Maps / Places B2B'
+              });
+            }
+          });
+        }
+      } catch (e) {
+        console.warn(`[GMaps Scraper] Error in query "${q}":`, e.message);
+      }
+    }
+
+    return res.json({ success: true, count: results.length, results });
+  } catch (err) {
+    console.error('❌ Erro no /api/scrape-gmaps:', err.message);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
 
 // Supabase Connection
 const supabaseUrl = 'https://zdlybiifkambebscydsp.supabase.co';
