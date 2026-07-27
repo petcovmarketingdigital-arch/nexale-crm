@@ -1817,31 +1817,94 @@ export default function App({ session }) {
     setGmapsSelectedIds([]);
 
     try {
-      const isLocal = ['localhost', '127.0.0.1'].includes(window.location.hostname);
-      const apiEndpoint = isLocal 
-        ? 'http://187.77.243.166:3001/api/scrape-gmaps'
-        : `${window.location.origin}/api/scrape-gmaps`;
+      const keyword = gmapsKeyword.trim();
+      const location = gmapsLocation.trim();
 
-      const response = await fetch(apiEndpoint, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          keyword: gmapsKeyword.trim(),
-          location: gmapsLocation.trim()
-        })
-      });
+      let kwClean = keyword;
+      if (kwClean.toLowerCase().endsWith('s') && !kwClean.toLowerCase().endsWith('is')) {
+        kwClean = kwClean.slice(0, -1);
+      }
 
-      if (!response.ok) throw new Error('Falha ao conectar com o robô extrator de B2B.');
+      const queries = [
+        `${kwClean} ${location}`,
+        `${keyword} ${location}`,
+        `${location} ${kwClean}`
+      ];
 
-      const data = await response.json();
-      if (data.success && Array.isArray(data.results)) {
-        setGmapsResults(data.results);
-        setGmapsSelectedIds(data.results.map(r => r.id));
-        if (data.results.length === 0) {
-          alert(`Nenhum estabelecimento encontrado para "${gmapsKeyword}" em "${gmapsLocation}". Tente ajustar o termo de busca.`);
+      const results = [];
+      const seen = new Set();
+
+      for (const q of queries) {
+        try {
+          const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(q)}&countrycodes=br&addressdetails=1&extratags=1&limit=50`;
+          const resNom = await fetch(url, { 
+            headers: { 'User-Agent': 'NexaleCRM-B2B-Scraper/1.0 (contact@nexalecrm.com.br)' } 
+          });
+
+          if (resNom.ok) {
+            const data = await resNom.json();
+            (data || []).forEach(item => {
+              const tags = item.extratags || {};
+              const addr = item.address || {};
+              const name = item.name || (item.display_name ? item.display_name.split(',')[0] : '');
+              const phone = tags.phone || tags['contact:phone'] || tags['contact:mobile'] || tags['mobile'] || '';
+
+              let cleanPhone = phone ? phone.split(';')[0].replace(/\D/g, '') : '';
+              if (cleanPhone && (cleanPhone.length === 10 || cleanPhone.length === 11)) {
+                cleanPhone = '55' + cleanPhone;
+              }
+
+              const street = addr.road ? `${addr.road} ${addr.house_number || ''}` : '';
+              const city = addr.city || addr.town || addr.municipality || location;
+
+              if (name && !seen.has(name.toLowerCase())) {
+                seen.add(name.toLowerCase());
+                results.push({
+                  id: `gmaps-${item.place_id}`,
+                  empresa: name,
+                  contato: name,
+                  telefone: cleanPhone,
+                  telefoneRaw: phone || 'Não informado',
+                  endereco: street ? `${street}, ${city}` : (item.display_name || location),
+                  categoria: item.type || item.class || keyword,
+                  website: tags.website || tags['contact:website'] || '',
+                  origem: 'Google Maps / Places B2B'
+                });
+              }
+            });
+          }
+        } catch (e) {
+          console.warn(`[GMaps Scraper] Error in query "${q}":`, e.message);
         }
-      } else {
-        alert(data.error || 'Nenhum resultado encontrado.');
+      }
+
+      // Fallback para VPS caso a busca local direta não traga contatos
+      if (results.length === 0) {
+        try {
+          const vpsRes = await fetch('http://187.77.243.166:3001/api/scrape-gmaps', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ keyword, location })
+          });
+          if (vpsRes.ok) {
+            const vpsData = await vpsRes.json();
+            if (vpsData.success && Array.isArray(vpsData.results)) {
+              vpsData.results.forEach(r => {
+                if (!seen.has(r.empresa.toLowerCase())) {
+                  seen.add(r.empresa.toLowerCase());
+                  results.push(r);
+                }
+              });
+            }
+          }
+        } catch (e) { /* fallback silencioso */ }
+      }
+
+      setGmapsResults(results);
+      setGmapsSelectedIds(results.map(r => r.id));
+
+      if (results.length === 0) {
+        alert(`Nenhum estabelecimento encontrado para "${keyword}" em "${location}". Tente buscar por termos mais abrangentes (ex: "ferragem", "loja", "oficina").`);
       }
     } catch (err) {
       console.error('Erro na captação B2B Google Maps:', err);
