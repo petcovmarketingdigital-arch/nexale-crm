@@ -347,6 +347,7 @@ export default function App({ session }) {
   const [showReassignModal, setShowReassignModal] = useState(false);
   const [reassignFromUserId, setReassignFromUserId] = useState('');
   const [reassignToUserId, setReassignToUserId] = useState('');
+  const [deleteFromUserAccount, setDeleteFromUserAccount] = useState(false);
   const [isReassigning, setIsReassigning] = useState(false);
 
   const [leadNotes, setLeadNotes] = useState([]);
@@ -1738,37 +1739,54 @@ export default function App({ session }) {
       .eq('company_id', activeId)
       .eq('user_id', reassignFromUserId);
 
-    if (!count || count === 0) {
-      alert(`O vendedor ${fromName} não possui nenhum lead na carteira atual.`);
-      return;
+    let confirmMsg = `Tem certeza que deseja transferir os ${count || 0} clientes da carteira de "${fromName}" para "${toName}"?`;
+    if (deleteFromUserAccount) {
+      confirmMsg += `\n\n⚠️ O LOGIN DO VENDEDOR SAINDO (${fromName}) TAMBÉM SERÁ REMOVIDO DA EMPRESA.`;
     }
 
-    if (!window.confirm(`Tem certeza que deseja transferir TODOS os ${count} clientes da carteira de "${fromName}" para "${toName}"?`)) {
+    if (!window.confirm(confirmMsg)) {
       return;
     }
 
     setIsReassigning(true);
     try {
       const nowIso = new Date().toISOString();
-      const { data, error } = await supabase
-        .from('leads')
-        .update({
-          user_id: reassignToUserId,
-          data_movimentacao: nowIso
-        })
-        .eq('company_id', activeId)
-        .eq('user_id', reassignFromUserId)
-        .select();
+      if (count && count > 0) {
+        const { error: updErr } = await supabase
+          .from('leads')
+          .update({
+            user_id: reassignToUserId,
+            data_movimentacao: nowIso
+          })
+          .eq('company_id', activeId)
+          .eq('user_id', reassignFromUserId);
 
-      if (error) throw error;
+        if (updErr) throw updErr;
+      }
 
-      alert(`🎉 Sucesso! ${(data || []).length} clientes foram transferidos da carteira de ${fromName} para ${toName}!`);
+      if (deleteFromUserAccount) {
+        const { error: delErr } = await supabase
+          .from('user_roles')
+          .delete()
+          .eq('id', reassignFromUserId);
+
+        if (delErr) throw delErr;
+      }
+
+      let successMsg = `🎉 Sucesso! Carteira transferida de ${fromName} para ${toName}!`;
+      if (deleteFromUserAccount) {
+        successMsg += ` O acesso de ${fromName} foi removido com sucesso.`;
+      }
+
+      alert(successMsg);
       setShowReassignModal(false);
       setReassignFromUserId('');
       setReassignToUserId('');
+      setDeleteFromUserAccount(false);
+      fetchTeamMembers(activeId);
       fetchLeads(activeId);
     } catch (err) {
-      alert('Erro ao transferir carteira: ' + err.message);
+      alert('Erro na operação: ' + err.message);
     } finally {
       setIsReassigning(false);
     }
@@ -4697,6 +4715,26 @@ export default function App({ session }) {
                     </option>
                   ))}
                 </select>
+              </div>
+
+              {/* Opção para Excluir Conta do Vendedor Saindo */}
+              <div className="bg-red-50/70 border border-red-200/80 rounded-2xl p-3.5 flex items-center justify-between gap-3 mt-2">
+                <div className="flex items-center gap-2.5">
+                  <span className="text-xl">🗑️</span>
+                  <div>
+                    <p className="text-xs font-bold text-red-800">Remover Acesso do Vendedor Desligado</p>
+                    <p className="text-[10px] text-red-600 font-medium">Exclui o login do vendedor da empresa logo após a transferência da carteira.</p>
+                  </div>
+                </div>
+                <label className="relative inline-flex items-center cursor-pointer select-none shrink-0">
+                  <input 
+                    type="checkbox" 
+                    checked={deleteFromUserAccount} 
+                    onChange={(e) => setDeleteFromUserAccount(e.target.checked)}
+                    className="sr-only peer" 
+                  />
+                  <div className="w-10 h-5.5 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4.5 after:w-4.5 after:transition-all peer-checked:bg-red-600"></div>
+                </label>
               </div>
             </div>
 
