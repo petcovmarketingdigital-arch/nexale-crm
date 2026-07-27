@@ -2564,7 +2564,11 @@ export default function App({ session }) {
           <div className="flex items-center gap-2">
             <span className="text-lg">{daysRemaining <= 3 ? '⚠️' : '⏳'}</span>
             <p>
-              <strong>Status:</strong> {subscriptionStatus === 'trialing' ? 'Período de Teste' : 'Assinatura Ativa'} &mdash; {expirationDate && !isNaN(expirationDate.getTime()) ? (daysRemaining <= 0 ? 'Expira hoje!' : `Restam ${daysRemaining} dia${daysRemaining > 1 ? 's' : ''}. (Vence em ${expirationDate.toLocaleDateString('pt-BR')})`) : 'Validade Ativa'}
+              <strong>Status:</strong> {subscriptionStatus === 'trialing' ? 'Período de Teste' : 'Assinatura Ativa'} &mdash; {(() => {
+                const targetDate = trialEndsAt ? new Date(trialEndsAt) : new Date('2026-08-28T23:59:59+00:00');
+                const remDays = Math.ceil((targetDate - new Date()) / (1000 * 60 * 60 * 24));
+                return remDays <= 0 ? 'Expira hoje!' : `Restam ${remDays} dias. (Vence em ${targetDate.toLocaleDateString('pt-BR')})`;
+              })()}
             </p>
           </div>
           <button onClick={() => setShowUpgradeModal(true)} className={`px-4 py-1.5 rounded-md font-bold text-xs shadow-sm transition-colors ${daysRemaining <= 3 ? 'bg-orange-600 hover:bg-orange-700 text-white' : 'bg-indigo-600 hover:bg-indigo-700 text-white'}`}>
