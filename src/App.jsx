@@ -648,61 +648,65 @@ export default function App({ session }) {
   }, [companyId, userRole, selectedSeller, customTitles]);
 
   const initApp = async () => {
-    setLoadingDb(true);
-    
-    // 1. Pega o perfil e a empresa do usuário logado
-    const { data: roleData } = await supabase.from('user_roles').select('*').eq('id', session.user.id).single();
-    
-    let role = roleData ? roleData.role : 'vendedor';
-    if (session.user.email === 'petcov@live.com' || session.user.email === 'contato@nexalecrm.com.br') {
-      role = 'superadmin';
-    }
-    const compId = roleData ? roleData.company_id : null;
-    
-    setUserRole(role);
-    setCompanyId(compId);
+    try {
+      setLoadingDb(true);
+      
+      // 1. Pega o perfil e a empresa do usuário logado
+      const { data: roleData } = await supabase.from('user_roles').select('*').eq('id', session.user.id).single();
+      
+      let role = roleData ? roleData.role : 'vendedor';
+      if (session?.user?.email === 'petcov@live.com' || session?.user?.email === 'contato@nexalecrm.com.br') {
+        role = 'superadmin';
+      }
+      const compId = roleData ? roleData.company_id : null;
+      
+      setUserRole(role);
+      setCompanyId(compId);
 
-    if (role === 'superadmin') {
-      setCurrentView('superadmin');
-      // Carrega lista de empresas para o seletor do superadmin e campanhas
-      const { data: companiesData } = await supabase.from('companies').select('id, name, phone, subscription_status, sa_stage, sa_temperatura, sa_valor').order('name', { ascending: true });
-      if (companiesData) {
-        setAllCompanies(companiesData);
-        if (companiesData.length > 0) {
-          setSelectedConfigCompanyId(companiesData[0].id);
+      if (role === 'superadmin') {
+        setCurrentView('superadmin');
+        // Carrega lista de empresas para o seletor do superadmin e campanhas
+        const { data: companiesData } = await supabase.from('companies').select('id, name, phone, subscription_status, sa_stage, sa_temperatura, sa_valor').order('name', { ascending: true });
+        if (companiesData) {
+          setAllCompanies(companiesData);
+          if (companiesData.length > 0) {
+            setSelectedConfigCompanyId(companiesData[0].id);
+          }
         }
-      }
-    } else {
-       setSelectedConfigCompanyId(compId);
-    }
-
-    let loadedCustomTitles = {};
-    if (session?.user?.user_metadata?.custom_kanban_titles) {
-      loadedCustomTitles = session.user.user_metadata.custom_kanban_titles;
-      setCustomTitles(loadedCustomTitles);
-    }
-
-    if (compId) {
-      const { data: compData } = await supabase.from('companies').select('invite_code, subscription_status, trial_ends_at, phone, nicho, logo_url, sla_first_touch_minutes, bolsao_max_minutes, max_rotations_before_manager').eq('id', compId).single();
-      if (compData) {
-        if (role === 'admin') setInviteCode(compData.invite_code);
-        setSubscriptionStatus(compData.subscription_status);
-        setTrialEndsAt(compData.trial_ends_at);
-        setCompanyPhone(compData.phone || '');
-        setCompanyNiche(compData.nicho || 'geral');
-        setCompanyLogoUrl(compData.logo_url || '');
-        setSlaMinutes(compData.sla_first_touch_minutes || 20);
-        setBolsaoMaxMinutes(compData.bolsao_max_minutes || 30);
-        setMaxRotations(compData.max_rotations_before_manager || 2);
+      } else {
+         setSelectedConfigCompanyId(compId);
       }
 
-      if (role === 'admin') {
-        const { data: teamData } = await supabase.from('user_roles').select('*').eq('company_id', compId);
-        if (teamData) setTeamMembers(teamData);
+      let loadedCustomTitles = {};
+      if (session?.user?.user_metadata?.custom_kanban_titles) {
+        loadedCustomTitles = session.user.user_metadata.custom_kanban_titles;
+        setCustomTitles(loadedCustomTitles);
       }
 
-      await fetchLeads(role, 'all', compId);
-    } else {
+      if (compId) {
+        const { data: compData } = await supabase.from('companies').select('invite_code, subscription_status, trial_ends_at, phone, nicho, logo_url, sla_first_touch_minutes, bolsao_max_minutes, max_rotations_before_manager').eq('id', compId).single();
+        if (compData) {
+          if (role === 'admin') setInviteCode(compData.invite_code);
+          setSubscriptionStatus(compData.subscription_status);
+          setTrialEndsAt(compData.trial_ends_at);
+          setCompanyPhone(compData.phone || '');
+          setCompanyNiche(compData.nicho || 'geral');
+          setCompanyLogoUrl(compData.logo_url || '');
+          setSlaMinutes(compData.sla_first_touch_minutes || 20);
+          setBolsaoMaxMinutes(compData.bolsao_max_minutes || 30);
+          setMaxRotations(compData.max_rotations_before_manager || 2);
+        }
+
+        if (role === 'admin') {
+          const { data: teamData } = await supabase.from('user_roles').select('*').eq('company_id', compId);
+          if (teamData) setTeamMembers(teamData);
+        }
+
+        await fetchLeads(role, 'all', compId);
+      }
+    } catch (err) {
+      console.error('Erro na inicialização da aplicação:', err);
+    } finally {
       setLoadingDb(false);
     }
   };
@@ -1794,7 +1798,7 @@ export default function App({ session }) {
       setReassignToUserId('');
       setDeleteFromUserAccount(false);
       fetchTeamMembers(activeId);
-      fetchLeads(activeId);
+      fetchLeads(userRole, selectedSeller, activeId);
     } catch (err) {
       alert('Erro na operação: ' + err.message);
     } finally {
