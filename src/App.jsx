@@ -1820,106 +1820,96 @@ export default function App({ session }) {
     try {
       const keyword = gmapsKeyword.trim();
       const location = gmapsLocation.trim();
-
-      let kwClean = keyword;
-      if (kwClean.toLowerCase().endsWith('s') && !kwClean.toLowerCase().endsWith('is')) {
-        kwClean = kwClean.slice(0, -1);
-      }
-
-      const synonymsMap = {
-        'academia': ['academia', 'crossfit', 'fitness', 'pilates', 'musculacao', 'ginastica', 'arena', 'centro de treinamento'],
-        'restaurante': ['restaurante', 'bistro', 'pizzaria', 'churrascaria', 'lanchonete', 'hamburgueria', 'sushi'],
-        'oficina': ['oficina', 'mecanica', 'auto center', 'autocenter', 'funilaria', 'troca de oleo'],
-        'ferragem': ['ferragem', 'materiais de construcao', 'construcao', 'parafusos', 'tintas', 'ferramentas'],
-        'imobiliaria': ['imobiliaria', 'imoveis', 'corretora', 'aluguel'],
-        'dentista': ['dentista', 'odontologia', 'odonto', 'clinica dental'],
-        'advogado': ['advogado', 'advocacia', 'escritorio de advocacia', 'juridico'],
-        'hotel': ['hotel', 'pousada', 'hospedagem', 'motel']
-      };
-
-      const keyLower = kwClean.toLowerCase();
-      let syns = synonymsMap[keyLower] || [kwClean, keyword];
-      if (!synonymsMap[keyLower]) {
-        syns.push(`${kwClean}s`, `loja de ${kwClean}`, `centro de ${kwClean}`);
-      }
-
-      const queries = [];
-      syns.forEach(syn => {
-        queries.push(`${syn} ${location}`);
-        queries.push(`${location} ${syn}`);
-      });
-
       const results = [];
       const seen = new Set();
 
-      const fetchPromises = queries.map(q => {
-        const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(q)}&countrycodes=br&addressdetails=1&extratags=1&limit=50`;
-        return fetch(url, { headers: { 'User-Agent': 'NexaleCRM-B2B-Engine/2.0 (contact@nexalecrm.com.br)' } })
-          .then(r => r.ok ? r.json() : [])
-          .catch(() => []);
-      });
-
-      const responses = await Promise.all(fetchPromises);
-
-      responses.forEach(data => {
-        (data || []).forEach((item, idx) => {
-          const tags = item.extratags || {};
-          const addr = item.address || {};
-          const name = item.name || (item.display_name ? item.display_name.split(',')[0] : '');
-          const phone = tags.phone || tags['contact:phone'] || tags['contact:mobile'] || tags['mobile'] || '';
-
-          let cleanPhone = phone ? phone.split(';')[0].replace(/\D/g, '') : '';
-          if (cleanPhone && (cleanPhone.length === 10 || cleanPhone.length === 11)) {
-            cleanPhone = '55' + cleanPhone;
-          }
-
-          const street = addr.road ? `${addr.road} ${addr.house_number || ''}` : '';
-          const city = addr.city || addr.town || addr.municipality || location;
-
-          if (name && !seen.has(name.toLowerCase())) {
-            seen.add(name.toLowerCase());
-            results.push({
-              id: `gmaps-${item.place_id || idx}`,
-              empresa: name,
-              contato: name,
-              telefone: cleanPhone,
-              telefoneRaw: phone || 'Não informado',
-              endereco: street ? `${street}, ${city}` : (item.display_name || location),
-              categoria: item.type || item.class || keyword,
-              website: tags.website || tags['contact:website'] || '',
-              origem: 'Google Maps / Places B2B'
+      // 1. Tentar primeiro o nosso Servidor VPS dedicado
+      try {
+        const vpsRes = await fetch('http://187.77.243.166:3001/api/scrape-gmaps', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ keyword, location })
+        });
+        if (vpsRes.ok) {
+          const vpsData = await vpsRes.json();
+          if (vpsData.success && Array.isArray(vpsData.results)) {
+            vpsData.results.forEach(r => {
+              if (!seen.has(r.empresa.toLowerCase())) {
+                seen.add(r.empresa.toLowerCase());
+                results.push(r);
+              }
             });
           }
-        });
-      });
+        }
+      } catch (e) {
+        console.warn('Erro ao consultar VPS B2B, usando busca local...', e);
+      }
 
-      // Fallback para VPS caso a busca local direta não traga contatos
+      // 2. Fallback local seguro (2 requisições sequenciais para não estourar o limite 429)
       if (results.length === 0) {
-        try {
-          const vpsRes = await fetch('http://187.77.243.166:3001/api/scrape-gmaps', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ keyword, location })
-          });
-          if (vpsRes.ok) {
-            const vpsData = await vpsRes.json();
-            if (vpsData.success && Array.isArray(vpsData.results)) {
-              vpsData.results.forEach(r => {
-                if (!seen.has(r.empresa.toLowerCase())) {
-                  seen.add(r.empresa.toLowerCase());
-                  results.push(r);
+        let kwClean = keyword;
+        if (kwClean.toLowerCase().endsWith('s') && !kwClean.toLowerCase().endsWith('is')) {
+          kwClean = kwClean.slice(0, -1);
+        }
+
+        const safeQueries = [
+          `${kwClean} ${location}`,
+          `${location} ${kwClean}`
+        ];
+
+        for (const q of safeQueries) {
+          try {
+            const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(q)}&countrycodes=br&addressdetails=1&extratags=1&limit=50`;
+            const resNom = await fetch(url, { 
+              headers: { 
+                'User-Agent': 'NexaleCRM-B2B-Client/2.5 (contact@nexalecrm.com.br)',
+                'Accept': 'application/json, text/plain, */*'
+              } 
+            });
+
+            if (resNom.ok) {
+              const data = await resNom.json();
+              (data || []).forEach(item => {
+                const tags = item.extratags || {};
+                const addr = item.address || {};
+                const name = item.name || (item.display_name ? item.display_name.split(',')[0] : '');
+                const phone = tags.phone || tags['contact:phone'] || tags['contact:mobile'] || tags['mobile'] || '';
+
+                let cleanPhone = phone ? phone.split(';')[0].replace(/\D/g, '') : '';
+                if (cleanPhone && (cleanPhone.length === 10 || cleanPhone.length === 11)) {
+                  cleanPhone = '55' + cleanPhone;
+                }
+
+                const street = addr.road ? `${addr.road} ${addr.house_number || ''}` : '';
+                const city = addr.city || addr.town || addr.municipality || location;
+
+                if (name && !seen.has(name.toLowerCase())) {
+                  seen.add(name.toLowerCase());
+                  results.push({
+                    id: `gmaps-${item.place_id}`,
+                    empresa: name,
+                    contato: name,
+                    telefone: cleanPhone,
+                    telefoneRaw: phone || 'Não informado',
+                    endereco: street ? `${street}, ${city}` : (item.display_name || location),
+                    categoria: item.type || item.class || keyword,
+                    website: tags.website || tags['contact:website'] || '',
+                    origem: 'Google Maps / Places B2B'
+                  });
                 }
               });
             }
+          } catch (e) {
+            console.warn(`[GMaps Scraper] Error in query "${q}":`, e.message);
           }
-        } catch (e) { /* fallback silencioso */ }
+        }
       }
 
       setGmapsResults(results);
       setGmapsSelectedIds(results.map(r => r.id));
 
       if (results.length === 0) {
-        alert(`Nenhum estabelecimento encontrado para "${keyword}" em "${location}". Tente buscar por termos mais abrangentes (ex: "ferragem", "loja", "oficina").`);
+        alert(`Nenhum estabelecimento encontrado para "${keyword}" em "${location}". Tente utilizar a Aba 2 ("Copiar & Colar do Google Maps") para importar diretamente todas as empresas do Google Maps!`);
       }
     } catch (err) {
       console.error('Erro na captação B2B Google Maps:', err);
