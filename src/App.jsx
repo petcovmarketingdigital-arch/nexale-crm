@@ -705,13 +705,15 @@ export default function App({ session }) {
     try {
       if (!isBackground) setLoadingDb(true);
       // Sincroniza configurações da empresa em tempo real
-      const { data: compData } = await supabase.from('companies').select('sla_first_touch_minutes, bolsao_max_minutes, max_rotations_before_manager, logo_url, nicho').eq('id', compId).single();
+      const { data: compData } = await supabase.from('companies').select('sla_first_touch_minutes, bolsao_max_minutes, max_rotations_before_manager, logo_url, nicho, subscription_status, trial_ends_at').eq('id', compId).single();
       if (compData) {
         setSlaMinutes(compData.sla_first_touch_minutes || 20);
         setBolsaoMaxMinutes(compData.bolsao_max_minutes || 30);
         setMaxRotations(compData.max_rotations_before_manager || 2);
         if (compData.logo_url) setCompanyLogoUrl(compData.logo_url);
         if (compData.nicho) setCompanyNiche(compData.nicho);
+        if (compData.subscription_status) setSubscriptionStatus(compData.subscription_status);
+        if (compData.trial_ends_at) setTrialEndsAt(compData.trial_ends_at);
       }
 
       let query = supabase.from('leads').select('*').order('data_criacao', { ascending: false });
@@ -2562,7 +2564,7 @@ export default function App({ session }) {
           <div className="flex items-center gap-2">
             <span className="text-lg">{daysRemaining <= 3 ? '⚠️' : '⏳'}</span>
             <p>
-              <strong>Status:</strong> {subscriptionStatus === 'trialing' ? 'Período de Teste' : 'Assinatura Ativa'} &mdash; {expirationDate ? (daysRemaining === 0 ? 'Expira hoje!' : `Restam ${daysRemaining} dia${daysRemaining > 1 ? 's' : ''}. (Vence em ${expirationDate.toLocaleDateString('pt-BR')})`) : 'Verificando validade...'}
+              <strong>Status:</strong> {subscriptionStatus === 'trialing' ? 'Período de Teste' : 'Assinatura Ativa'} &mdash; {expirationDate && !isNaN(expirationDate.getTime()) ? (daysRemaining <= 0 ? 'Expira hoje!' : `Restam ${daysRemaining} dia${daysRemaining > 1 ? 's' : ''}. (Vence em ${expirationDate.toLocaleDateString('pt-BR')})`) : 'Validade Ativa'}
             </p>
           </div>
           <button onClick={() => setShowUpgradeModal(true)} className={`px-4 py-1.5 rounded-md font-bold text-xs shadow-sm transition-colors ${daysRemaining <= 3 ? 'bg-orange-600 hover:bg-orange-700 text-white' : 'bg-indigo-600 hover:bg-indigo-700 text-white'}`}>
