@@ -1956,20 +1956,22 @@ export default function App({ session }) {
     let numbersToCheck = [];
     const filteredLeadsList = getCampFilteredLeadsList();
 
-    const externalContactsList = campExternalList
+    const externalContactsList = (campExternalList || '')
       .split(/[\n,;]/)
       .map(line => {
         const parts = line.trim().split('|');
         return { nome: parts[1]?.trim() || 'Cliente', telefone: parts[0]?.trim().replace(/\D/g, '') };
       })
-      .filter(c => c.telefone.length >= 10);
+      .filter(c => c.telefone && c.telefone.length >= 10);
+
+    const safeSelected = Array.isArray(campSelectedLeads) ? campSelectedLeads : [];
 
     if (campTab === 'crm') {
-      numbersToCheck = filteredLeadsList.filter(l => campSelectedLeads.includes(l.id)).map(l => l.telefone);
+      numbersToCheck = filteredLeadsList.filter(l => safeSelected.includes(l.id)).map(l => l.telefone);
     } else if (campTab === 'externa') {
       numbersToCheck = externalContactsList.map(c => c.telefone);
     } else {
-      const crmNums = filteredLeadsList.filter(l => campSelectedLeads.includes(l.id)).map(l => l.telefone);
+      const crmNums = filteredLeadsList.filter(l => safeSelected.includes(l.id)).map(l => l.telefone);
       const extNums = externalContactsList.map(c => c.telefone);
       numbersToCheck = [...crmNums, ...extNums];
     }
@@ -3021,39 +3023,52 @@ export default function App({ session }) {
 
       {/* 🚀 TELA DE CAMPANHA */}
       {currentView === 'campanha' && (() => {
-        // Filtrar leads do CRM conforme filtros
-        const saLeads = allCompanies.map(c => ({
-          id: c.id,
-          empresa: c.name,
-          contato: c.name,
-          telefone: c.phone || '',
-          temperatura: c.sa_temperatura || 'Frio',
-          coluna: c.sa_stage || 'leads',
-          valor: c.sa_valor || 0
-        }));
-        const allLeads = userRole === 'superadmin' ? saLeads : columns.flatMap(col => col.cards.map(c => ({ ...c, coluna: col.id })));
-        const filteredLeads = allLeads.filter(l => {
-          if (campFilter.coluna !== 'all' && l.coluna !== campFilter.coluna) return false;
-          if (campFilter.temperatura !== 'all' && l.temperatura !== campFilter.temperatura) return false;
-          return l.telefone && l.telefone !== 'Não informado';
-        });
+        try {
+          // Filtrar leads do CRM conforme filtros com proteção contra null/undefined
+          const safeCompanies = Array.isArray(allCompanies) ? allCompanies : [];
+          const safeColumns = Array.isArray(columns) ? columns : [];
+          const safeQueue = Array.isArray(campaignQueue) ? campaignQueue : [];
+          const safeFilter = campFilter || { coluna: 'all', temperatura: 'all' };
+          const safeSelectedLeads = Array.isArray(campSelectedLeads) ? campSelectedLeads : [];
+          const safeExternalList = typeof campExternalList === 'string' ? campExternalList : '';
 
-        // Parse external list
-        const externalContacts = campExternalList
-          .split(/[\n,;]/)
-          .map(line => {
-            const parts = line.trim().split('|');
-            return { nome: parts[1]?.trim() || 'Cliente', telefone: parts[0]?.trim().replace(/\D/g, '') };
-          })
-          .filter(c => c.telefone.length >= 10);
+          const saLeads = safeCompanies.map(c => ({
+            id: c.id,
+            empresa: c.name || 'Empresa',
+            contato: c.name || 'Contato',
+            telefone: c.phone || '',
+            temperatura: c.sa_temperatura || 'Frio',
+            coluna: c.sa_stage || 'leads',
+            valor: c.sa_valor || 0
+          }));
 
-        const handleToggleLead = (id) => {
-          setCampSelectedLeads(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
-        };
-        const handleSelectAll = () => {
-          if (campSelectedLeads.length === filteredLeads.length) setCampSelectedLeads([]);
-          else setCampSelectedLeads(filteredLeads.map(l => l.id));
-        };
+          const allLeads = userRole === 'superadmin' 
+            ? saLeads 
+            : safeColumns.flatMap(col => (Array.isArray(col?.cards) ? col.cards : []).map(c => ({ ...c, coluna: col?.id })));
+
+          const filteredLeads = (allLeads || []).filter(l => {
+            if (!l) return false;
+            if (safeFilter.coluna !== 'all' && l.coluna !== safeFilter.coluna) return false;
+            if (safeFilter.temperatura !== 'all' && l.temperatura !== safeFilter.temperatura) return false;
+            return l.telefone && l.telefone !== 'Não informado';
+          });
+
+          // Parse external list
+          const externalContacts = safeExternalList
+            .split(/[\n,;]/)
+            .map(line => {
+              const parts = line.trim().split('|');
+              return { nome: parts[1]?.trim() || 'Cliente', telefone: parts[0]?.trim().replace(/\D/g, '') };
+            })
+            .filter(c => c.telefone && c.telefone.length >= 10);
+
+          const handleToggleLead = (id) => {
+            setCampSelectedLeads(prev => (prev || []).includes(id) ? (prev || []).filter(x => x !== id) : [...(prev || []), id]);
+          };
+          const handleSelectAll = () => {
+            if (safeSelectedLeads.length === filteredLeads.length) setCampSelectedLeads([]);
+            else setCampSelectedLeads(filteredLeads.map(l => l.id));
+          };
 
         const handleFireCampaign = async () => {
           if (!campMsg.trim() && !campAttachment) { alert('Escreva uma mensagem ou anexe um arquivo antes de disparar!'); return; }
@@ -3650,7 +3665,23 @@ export default function App({ session }) {
             </div>
           </div>
         );
-      })()}
+      } catch (renderErr) {
+        console.error("Erro ao renderizar tela de Campanhas:", renderErr);
+        return (
+          <div className="p-8 text-center bg-white rounded-2xl border border-red-200 shadow-sm max-w-xl mx-auto mt-8">
+            <span className="text-3xl block mb-2">⚠️</span>
+            <h3 className="text-lg font-bold text-red-800 mb-1">Ops! Erro ao carregar Campanhas</h3>
+            <p className="text-xs text-slate-500 mb-4">{renderErr?.message || 'Ocorreu uma falha temporária ao ler os dados.'}</p>
+            <button 
+              onClick={() => { setCampTab('crm'); fetchCampaignQueue(); }} 
+              className="px-4 py-2 bg-orange-500 hover:bg-orange-600 text-slate-900 font-bold text-xs rounded-xl shadow-sm cursor-pointer transition-all"
+            >
+              🔄 Recarregar Tela de Campanhas
+            </button>
+          </div>
+        );
+      }
+    })()}
 
 
       {lossModal && (
