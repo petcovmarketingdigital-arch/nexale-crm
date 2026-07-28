@@ -1,15 +1,24 @@
 import React, { useState, useEffect, useRef } from 'react';
 
-// Referência global da janela do WhatsApp Web — evita flood de abas
+// Referência global da janela do WhatsApp Web — garante sempre a MESMA aba
+// Usamos nome fixo 'nexale_wa' + referência real para máxima compatibilidade
 let _waWindow = null;
 const openWhatsAppWeb = (url) => {
-  if (_waWindow && !_waWindow.closed) {
-    _waWindow.location.href = url;
-    _waWindow.focus();
-  } else {
-    _waWindow = window.open(url, '_blank');
+  try {
+    if (_waWindow && !_waWindow.closed) {
+      // Janela já aberta: navega ela para o novo número sem abrir outra aba
+      _waWindow.location.href = url;
+      _waWindow.focus();
+      return;
+    }
+  } catch (e) {
+    // Caso raro de erro cross-origin, deixa abrir com nome fixo abaixo
   }
+  // Primeira vez ou janela fechada: abre com nome fixo para que próximas chamadas reutilizem
+  _waWindow = window.open(url, 'nexale_wa');
+  if (_waWindow) _waWindow.focus();
 };
+
 import { supabase } from './supabaseClient';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, PieChart, Pie, Cell, Legend } from 'recharts';
 import { useRegisterSW } from 'virtual:pwa-register/react';
