@@ -4278,7 +4278,7 @@ export default function App({ session }) {
 
                           try {
                             const activeInst = userRole === 'superadmin' ? 'superadmin' : companyId;
-                            const res = await fetch('/api/send-chat-message', {
+                            let res = await fetch('/api/send-chat-message', {
                               method: 'POST',
                               headers: { 'Content-Type': 'application/json' },
                               body: JSON.stringify({
@@ -4288,10 +4288,29 @@ export default function App({ session }) {
                                 text: textToSend
                               })
                             });
-                            if (!res.ok) throw new Error('Falha ao enviar mensagem');
+
+                            if (!res.ok) {
+                              // Fallback para URL absoluta do VPS
+                              res = await fetch('https://app.nexalecrm.com.br/api/send-chat-message', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                  leadId: activeLead.id,
+                                  companyId: activeInst,
+                                  phone: activeLead.telefone,
+                                  text: textToSend
+                                })
+                              });
+                            }
+
+                            if (!res.ok) {
+                              const errData = await res.json().catch(() => ({}));
+                              throw new Error(errData.error || `Erro ${res.status}`);
+                            }
+
                             fetchChatMessages(activeLead.id);
                           } catch (err) {
-                            alert('Erro ao enviar: ' + err.message);
+                            alert('Erro ao enviar mensagem: ' + err.message);
                           } finally {
                             setIsSendingChatMessage(false);
                           }

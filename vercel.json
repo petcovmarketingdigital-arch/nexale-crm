@@ -2,6 +2,10 @@
   "name": "nexale-crm",
   "rewrites": [
     {
+      "source": "/api/:path*",
+      "destination": "https://app.nexalecrm.com.br/api/:path*"
+    },
+    {
       "source": "/evolution/:path*",
       "destination": "https://app.nexalecrm.com.br/evolution/:path*"
     },
@@ -11,5 +15,3 @@
     }
   ]
 }
-
-
