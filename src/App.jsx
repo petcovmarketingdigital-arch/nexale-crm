@@ -1825,11 +1825,17 @@ export default function App({ session }) {
 
       // 1. Tentar primeiro o nosso Servidor VPS dedicado (HTTPS com CORS)
       try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 35000);
+
         const vpsRes = await fetch('https://app.nexalecrm.com.br/api/scrape-gmaps', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ keyword, location })
+          body: JSON.stringify({ keyword, location }),
+          signal: controller.signal
         });
+        clearTimeout(timeoutId);
+
         if (vpsRes.ok) {
           const vpsData = await vpsRes.json();
           if (vpsData.success && Array.isArray(vpsData.results)) {
