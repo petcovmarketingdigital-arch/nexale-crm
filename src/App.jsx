@@ -3148,7 +3148,7 @@ export default function App({ session }) {
                                   </button>
                                   {/* Botão App nativo — abre o WhatsApp instalado no PC/celular */}
                                   <a
-                                    href={`whatsapp://send?phone=${phone}&text=${msg}`}
+                                    href={`whatsapp://send?phone=${phone}&text=${encodeURIComponent(text)}`}
                                     className="bg-green-600 hover:bg-green-700 text-white text-xs font-bold py-1.5 px-2 rounded-lg transition-colors flex items-center justify-center gap-1 shrink-0"
                                     title="Abrir no app WhatsApp instalado"
                                   >
