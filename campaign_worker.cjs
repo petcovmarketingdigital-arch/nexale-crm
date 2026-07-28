@@ -115,7 +115,7 @@ app.post('/api/check-whatsapp', async (req, res) => {
   }
 });
 
-// Endpoint de Captação B2B Google Maps (Estilo WA Sender)
+// Endpoint de Captação B2B Google Maps (Estilo WA Sender com Puppeteer Chrome)
 app.post('/api/scrape-gmaps', async (req, res) => {
   try {
     const { keyword, location } = req.body;
@@ -123,134 +123,136 @@ app.post('/api/scrape-gmaps', async (req, res) => {
       return res.status(400).json({ error: 'Informe a palavra-chave/segmento e a cidade/localidade.' });
     }
 
-    const axios = require('axios');
-    const cheerio = require('cheerio');
-
+    const puppeteer = require('puppeteer');
     const results = [];
     const seen = new Set();
 
-    let kwClean = keyword.trim();
-    if (kwClean.toLowerCase().endsWith('s') && !kwClean.toLowerCase().endsWith('is')) {
-      kwClean = kwClean.slice(0, -1);
-    }
-
-    // 1. Pesquisa de Alta Densidade por Raio no Overpass (15km)
+    let browser;
     try {
-      const nomCityUrl = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(location)}&countrycodes=br&limit=1`;
-      const nomRes = await axios.get(nomCityUrl, {
-        headers: { 'User-Agent': 'NexaleCRM-Engine/3.0 (contact@nexalecrm.com.br)' },
-        timeout: 5000
+      console.log(`🚀 Iniciando Puppeteer Chrome para buscar "${keyword} ${location}" no Google Maps...`);
+      browser = await puppeteer.launch({
+        executablePath: '/usr/bin/google-chrome-stable',
+        args: [
+          '--no-sandbox',
+          '--disable-setuid-sandbox',
+          '--disable-dev-shm-usage',
+          '--disable-accelerated-2d-canvas',
+          '--disable-gpu',
+          '--window-size=1280,800'
+        ],
+        headless: 'new'
       });
 
-      if (nomRes.data && nomRes.data.length > 0) {
-        const lat = parseFloat(nomRes.data[0].lat);
-        const lon = parseFloat(nomRes.data[0].lon);
-        const cityName = nomRes.data[0].display_name.split(',')[0];
+      const page = await browser.newPage();
+      await page.setViewport({ width: 1280, height: 800 });
+      await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36');
 
-        const opQuery = `
-          [out:json][timeout:20];
-          (
-            node["name"](around:15000,${lat},${lon});
-            way["name"](around:15000,${lat},${lon});
-          );
-          out body 300;
-        `;
+      const query = encodeURIComponent(`${keyword} ${location}`);
+      await page.goto(`https://www.google.com/maps/search/${query}`, { waitUntil: 'networkidle2', timeout: 35000 });
 
-        const opRes = await axios.post('https://overpass-api.de/api/interpreter', 
-          'data=' + encodeURIComponent(opQuery), 
-          {
-            headers: {
-              'Content-Type': 'application/x-www-form-urlencoded',
-              'User-Agent': 'NexaleCRM-B2B-Engine/3.0 (contact@nexalecrm.com.br)'
-            },
-            timeout: 8000
-          }
-        );
-
-        if (opRes.data && Array.isArray(opRes.data.elements)) {
-          const kwLower = kwClean.toLowerCase();
-          opRes.data.elements.forEach((el, idx) => {
-            const tags = el.tags || {};
-            const name = tags.name || tags['name:pt'];
-            const phone = tags.phone || tags['contact:phone'] || tags['contact:mobile'] || tags['mobile'] || '';
-
-            if (name) {
-              const nameLower = name.toLowerCase();
-              const isMatch = nameLower.includes(kwLower) ||
-                (tags.leisure && tags.leisure.toLowerCase().includes(kwLower)) ||
-                (tags.amenity && tags.amenity.toLowerCase().includes(kwLower)) ||
-                (tags.shop && tags.shop.toLowerCase().includes(kwLower)) ||
-                (tags.sport && tags.sport.toLowerCase().includes(kwLower));
-
-              if (isMatch && !seen.has(nameLower)) {
-                seen.add(nameLower);
-
-                let cleanPhone = phone ? phone.split(';')[0].replace(/\D/g, '') : '';
-                if (cleanPhone && (cleanPhone.length === 10 || cleanPhone.length === 11)) {
-                  cleanPhone = '55' + cleanPhone;
-                }
-
-                const street = tags['addr:street'] ? `${tags['addr:street']} ${tags['addr:housenumber'] || ''}` : '';
-
-                results.push({
-                  id: `gmaps-op-${el.id || idx}`,
-                  empresa: name,
-                  contato: name,
-                  telefone: cleanPhone,
-                  telefoneRaw: phone || 'Não informado',
-                  endereco: street ? `${street}, ${cityName}` : `${cityName}, RS`,
-                  categoria: tags.leisure || tags.amenity || tags.shop || keyword,
-                  website: tags.website || tags['contact:website'] || '',
-                  origem: 'Google Maps / Places B2B'
-                });
-              }
-            }
-          });
-        }
+      // Rola o painel lateral do Google Maps 6 vezes (estilo WA Sender) para carregar 30+ lugares
+      for (let i = 0; i < 6; i++) {
+        await page.evaluate(() => {
+          const feed = document.querySelector('div[role="feed"]');
+          if (feed) feed.scrollTop += 2000;
+        });
+        await new Promise(r => setTimeout(r, 1000));
       }
-    } catch (e) {
-      console.warn('[B2B Engine] Overpass error:', e.message);
-    }
 
-    // 2. Busca Nominatim Multi-query Fallback
-    try {
-      const q = `${keyword} ${location}`;
-      const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(q)}&countrycodes=br&addressdetails=1&extratags=1&limit=50`;
-      const resNom = await fetch(url, { headers: { 'User-Agent': 'NexaleCRM-B2B-Engine/3.0 (contact@nexalecrm.com.br)' } });
-      if (resNom.ok) {
-        const data = await resNom.json();
-        (data || []).forEach((item, idx) => {
-          const tags = item.extratags || {};
-          const addr = item.address || {};
-          const name = item.name || (item.display_name ? item.display_name.split(',')[0] : '');
-          const phone = tags.phone || tags['contact:phone'] || tags['contact:mobile'] || tags['mobile'] || '';
+      const extracted = await page.evaluate(() => {
+        const items = [];
+        const cards = document.querySelectorAll('div[role="article"], div.Nv2pk');
 
-          let cleanPhone = phone ? phone.split(';')[0].replace(/\D/g, '') : '';
-          if (cleanPhone && (cleanPhone.length === 10 || cleanPhone.length === 11)) {
-            cleanPhone = '55' + cleanPhone;
-          }
+        cards.forEach((card, idx) => {
+          const nameEl = card.querySelector('div.fontHeadlineSmall, span.OSrA2b, div.qBF1Pd');
+          const name = nameEl ? nameEl.textContent.trim() : '';
 
-          const street = addr.road ? `${addr.road} ${addr.house_number || ''}` : '';
-          const city = addr.city || addr.town || addr.municipality || location;
+          const text = card.textContent || '';
+          const phoneMatch = text.match(/(?:\+?55\s?)?(?:\(?([1-9]{2})\)?\s?)?(?:9\d{4}|\d{4})[-\s]?\d{4}/);
+          
+          if (name && name.length > 2) {
+            let cleanPhone = phoneMatch ? phoneMatch[0].replace(/\D/g, '') : '';
+            if (cleanPhone && (cleanPhone.length === 10 || cleanPhone.length === 11)) {
+              cleanPhone = '55' + cleanPhone;
+            }
 
-          if (name && !seen.has(name.toLowerCase())) {
-            seen.add(name.toLowerCase());
-            results.push({
-              id: `gmaps-nom-${item.place_id || idx}`,
+            // Tenta obter o endereço da linha de detalhes
+            let address = '';
+            const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+            const addrLine = lines.find(l => l.includes('Av.') || l.includes('Rua') || l.includes('Alameda') || l.includes('Estrada') || l.includes('Rodovia') || l.includes('·'));
+            if (addrLine) address = addrLine;
+
+            items.push({
+              id: `gmaps-pup-${idx + 1}`,
               empresa: name,
               contato: name,
               telefone: cleanPhone,
-              telefoneRaw: phone || 'Não informado',
-              endereco: street ? `${street}, ${city}` : (item.display_name || location),
-              categoria: item.type || item.class || keyword,
-              website: tags.website || tags['contact:website'] || '',
-              origem: 'Google Maps / Places B2B'
+              telefoneRaw: phoneMatch ? phoneMatch[0] : 'Não informado',
+              endereco: address || 'Endereço registrado no Google Maps',
+              categoria: 'Google Maps Place',
+              origem: 'Google Maps B2B (WA Sender VPS)'
             });
           }
         });
+
+        return items;
+      });
+
+      (extracted || []).forEach(item => {
+        if (item.empresa && !seen.has(item.empresa.toLowerCase())) {
+          seen.add(item.empresa.toLowerCase());
+          results.push(item);
+        }
+      });
+
+      console.log(`✅ Puppeteer extraiu ${results.length} empresas diretamente do Google Maps!`);
+    } catch (pupErr) {
+      console.warn('⚠️ Alerta Puppeteer, recorrendo ao motor secundário:', pupErr.message);
+    } finally {
+      if (browser) await browser.close().catch(() => {});
+    }
+
+    // 2. Fallback Nominatim / Overpass caso Puppeteer retorne 0
+    if (results.length === 0) {
+      try {
+        const q = `${keyword} ${location}`;
+        const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(q)}&countrycodes=br&addressdetails=1&extratags=1&limit=50`;
+        const resNom = await fetch(url, { headers: { 'User-Agent': 'NexaleCRM-B2B-Engine/3.0 (contact@nexalecrm.com.br)' } });
+        if (resNom.ok) {
+          const data = await resNom.json();
+          (data || []).forEach((item, idx) => {
+            const tags = item.extratags || {};
+            const addr = item.address || {};
+            const name = item.name || (item.display_name ? item.display_name.split(',')[0] : '');
+            const phone = tags.phone || tags['contact:phone'] || tags['contact:mobile'] || tags['mobile'] || '';
+
+            let cleanPhone = phone ? phone.split(';')[0].replace(/\D/g, '') : '';
+            if (cleanPhone && (cleanPhone.length === 10 || cleanPhone.length === 11)) {
+              cleanPhone = '55' + cleanPhone;
+            }
+
+            const street = addr.road ? `${addr.road} ${addr.house_number || ''}` : '';
+            const city = addr.city || addr.town || addr.municipality || location;
+
+            if (name && !seen.has(name.toLowerCase())) {
+              seen.add(name.toLowerCase());
+              results.push({
+                id: `gmaps-nom-${item.place_id || idx}`,
+                empresa: name,
+                contato: name,
+                telefone: cleanPhone,
+                telefoneRaw: phone || 'Não informado',
+                endereco: street ? `${street}, ${city}` : (item.display_name || location),
+                categoria: item.type || item.class || keyword,
+                website: tags.website || tags['contact:website'] || '',
+                origem: 'Google Maps / Places B2B'
+              });
+            }
+          });
+        }
+      } catch (e) {
+        console.warn('[B2B Engine] Nominatim error:', e.message);
       }
-    } catch (e) {
-      console.warn('[B2B Engine] Nominatim error:', e.message);
     }
 
     return res.json({ success: true, count: results.length, results });
