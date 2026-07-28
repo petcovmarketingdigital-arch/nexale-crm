@@ -148,15 +148,17 @@ app.post('/api/scrape-gmaps', async (req, res) => {
       await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36');
 
       const query = encodeURIComponent(`${keyword} ${location}`);
-      await page.goto(`https://www.google.com/maps/search/${query}`, { waitUntil: 'networkidle2', timeout: 35000 });
+      await page.goto(`https://www.google.com/maps/search/${query}`, { waitUntil: 'domcontentloaded', timeout: 15000 });
 
-      // Rola o painel lateral do Google Maps 6 vezes (estilo WA Sender) para carregar 30+ lugares
-      for (let i = 0; i < 6; i++) {
+      // Espera o container de resultados aparecer e rola 5 vezes rapidamente
+      await page.waitForSelector('div[role="feed"], div[role="article"], div.Nv2pk', { timeout: 8000 }).catch(() => {});
+
+      for (let i = 0; i < 5; i++) {
         await page.evaluate(() => {
           const feed = document.querySelector('div[role="feed"]');
           if (feed) feed.scrollTop += 2000;
         });
-        await new Promise(r => setTimeout(r, 1000));
+        await new Promise(r => setTimeout(r, 400));
       }
 
       const extracted = await page.evaluate(() => {
