@@ -1,4 +1,15 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+
+// Referência global da janela do WhatsApp Web — evita flood de abas
+let _waWindow = null;
+const openWhatsAppWeb = (url) => {
+  if (_waWindow && !_waWindow.closed) {
+    _waWindow.location.href = url;
+    _waWindow.focus();
+  } else {
+    _waWindow = window.open(url, '_blank');
+  }
+};
 import { supabase } from './supabaseClient';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, PieChart, Pie, Cell, Legend } from 'recharts';
 import { useRegisterSW } from 'virtual:pwa-register/react';
@@ -3115,7 +3126,7 @@ export default function App({ session }) {
                                 <div className="mt-2 flex gap-1.5 w-full">
                                   {/* Botão WhatsApp Web — abre sempre na MESMA aba */}
                                   <button
-                                    onClick={() => window.open(`https://web.whatsapp.com/send?phone=${phone}&text=${msg}`, 'nexale-whatsapp-web')}
+                                    onClick={() => openWhatsAppWeb(`https://web.whatsapp.com/send?phone=${phone}&text=${msg}`)}
                                     className="flex-1 bg-green-50 hover:bg-green-100 text-green-700 border border-green-200 text-xs font-bold py-1.5 px-2 rounded-lg transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
                                     title="Abrir diretamente no WhatsApp Web (mesma aba)"
                                   >
