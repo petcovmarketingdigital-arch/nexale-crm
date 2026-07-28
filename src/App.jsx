@@ -373,6 +373,8 @@ export default function App({ session }) {
   const [reassignToUserId, setReassignToUserId] = useState('');
   const [deleteFromUserAccount, setDeleteFromUserAccount] = useState(false);
   const [isReassigning, setIsReassigning] = useState(false);
+  // Painel WhatsApp lateral
+  const [waPanel, setWaPanel] = useState(null); // null | { nome, empresa, phone, text }
 
   // Captação B2B Google Maps & CNPJ
   const [b2bTab, setB2bTab] = useState('gmaps');
@@ -3136,25 +3138,13 @@ export default function App({ session }) {
                               const firstName = card.contato !== 'Sócio/Responsável' ? card.contato.split(' ')[0] : '';
                               const text = `Olá ${firstName}, tudo bem?`;
                               return (
-                                <div className="mt-2 flex gap-1.5 w-full">
-                                  {/* Botão WhatsApp Web — abre sempre na MESMA aba via proxy same-origin */}
-                                  <button
-                                    onClick={() => openWhatsAppWeb(phone, text)}
-                                    className="flex-1 bg-green-50 hover:bg-green-100 text-green-700 border border-green-200 text-xs font-bold py-1.5 px-2 rounded-lg transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
-                                    title="Abrir diretamente no WhatsApp Web (mesma aba)"
-                                  >
-                                    <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" fill="currentColor" viewBox="0 0 16 16"><path d="M13.601 2.326A7.85 7.85 0 0 0 7.994 0C3.627 0 .068 3.558.064 7.926c0 1.399.366 2.76 1.057 3.965L0 16l4.204-1.102a7.9 7.9 0 0 0 3.79.965h.004c4.368 0 7.926-3.558 7.93-7.93A7.9 7.9 0 0 0 13.6 2.326zM7.994 14.521a6.6 6.6 0 0 1-3.356-.92l-.24-.144-2.494.654.666-2.433-.156-.251a6.56 6.56 0 0 1-1.007-3.505c0-3.626 2.957-6.584 6.591-6.584a6.56 6.56 0 0 1 4.66 1.931 6.56 6.56 0 0 1 1.928 4.66c-.004 3.639-2.961 6.592-6.592 6.592m3.615-4.934c-.197-.099-1.17-.578-1.353-.646-.182-.065-.315-.099-.445.099-.133.197-.513.646-.627.775-.114.133-.232.148-.43.05-.197-.1-.836-.308-1.592-.985-.59-.525-.985-1.175-1.103-1.372-.114-.198-.011-.304.088-.403.087-.088.197-.232.296-.346.1-.114.133-.198.198-.33.065-.134.034-.248-.015-.347-.05-.099-.445-1.076-.612-1.47-.16-.389-.323-.335-.445-.34-.114-.007-.247-.007-.38-.007a.73.73 0 0 0-.529.247c-.182.198-.691.677-.691 1.654s.71 1.916.81 2.049c.098.133 1.394 2.132 3.383 2.992.47.205.84.326 1.129.418.475.152.904.129 1.246.08.38-.058 1.171-.48 1.338-.943.164-.464.164-.86.114-.943-.049-.084-.182-.133-.38-.232"/></svg>
-                                    WhatsApp Web
-                                  </button>
-                                  {/* Botão App nativo — abre o WhatsApp instalado no PC/celular */}
-                                  <a
-                                    href={`whatsapp://send?phone=${phone}&text=${encodeURIComponent(text)}`}
-                                    className="bg-green-600 hover:bg-green-700 text-white text-xs font-bold py-1.5 px-2 rounded-lg transition-colors flex items-center justify-center gap-1 shrink-0"
-                                    title="Abrir no app WhatsApp instalado"
-                                  >
-                                    📱 App
-                                  </a>
-                                </div>
+                                <button
+                                  onClick={() => setWaPanel({ nome: card.contato, empresa: card.empresa, phone, text })}
+                                  className="mt-2 w-full bg-green-50 hover:bg-green-100 text-green-700 border border-green-200 text-xs font-bold py-1.5 px-3 rounded-lg transition-all flex items-center justify-center gap-2 cursor-pointer"
+                                >
+                                  <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" fill="currentColor" viewBox="0 0 16 16"><path d="M13.601 2.326A7.85 7.85 0 0 0 7.994 0C3.627 0 .068 3.558.064 7.926c0 1.399.366 2.76 1.057 3.965L0 16l4.204-1.102a7.9 7.9 0 0 0 3.79.965h.004c4.368 0 7.926-3.558 7.93-7.93A7.9 7.9 0 0 0 13.6 2.326zM7.994 14.521a6.6 6.6 0 0 1-3.356-.92l-.24-.144-2.494.654.666-2.433-.156-.251a6.56 6.56 0 0 1-1.007-3.505c0-3.626 2.957-6.584 6.591-6.584a6.56 6.56 0 0 1 4.66 1.931 6.56 6.56 0 0 1 1.928 4.66c-.004 3.639-2.961 6.592-6.592 6.592m3.615-4.934c-.197-.099-1.17-.578-1.353-.646-.182-.065-.315-.099-.445.099-.133.197-.513.646-.627.775-.114.133-.232.148-.43.05-.197-.1-.836-.308-1.592-.985-.59-.525-.985-1.175-1.103-1.372-.114-.198-.011-.304.088-.403.087-.088.197-.232.296-.346.1-.114.133-.198.198-.33.065-.134.034-.248-.015-.347-.05-.099-.445-1.076-.612-1.47-.16-.389-.323-.335-.445-.34-.114-.007-.247-.007-.38-.007a.73.73 0 0 0-.529.247c-.182.198-.691.677-.691 1.654s.71 1.916.81 2.049c.098.133 1.394 2.132 3.383 2.992.47.205.84.326 1.129.418.475.152.904.129 1.246.08.38-.058 1.171-.48 1.338-.943.164-.464.164-.86.114-.943-.049-.084-.182-.133-.38-.232"/></svg>
+                                  Falar no WhatsApp
+                                </button>
                               );
                             })()}
                             {card.email && <p className="flex items-center gap-1 mt-1"><span className="opacity-70">✉️</span> {card.email.toLowerCase()}</p>}
@@ -5494,6 +5484,76 @@ export default function App({ session }) {
           </div>
         )}
       </div>
+
+      {/* ====== PAINEL WHATSAPP LATERAL ====== */}
+      {waPanel && (
+        <div
+          style={{
+            position: 'fixed', bottom: '24px', right: '24px', zIndex: 9999,
+            width: '320px',
+            background: 'linear-gradient(135deg, #0d1117 0%, #161b22 100%)',
+            borderRadius: '20px',
+            boxShadow: '0 25px 60px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.08)',
+            animation: 'waPanelSlideIn 0.3s cubic-bezier(0.34,1.56,0.64,1)',
+            overflow: 'hidden',
+            fontFamily: 'Inter, sans-serif',
+          }}
+        >
+          <style>{`
+            @keyframes waPanelSlideIn {
+              from { opacity: 0; transform: translateY(30px) scale(0.95); }
+              to   { opacity: 1; transform: translateY(0) scale(1); }
+            }
+          `}</style>
+
+          {/* Header */}
+          <div style={{ background: 'linear-gradient(135deg, #25d366 0%, #128c7e 100%)', padding: '14px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <div style={{ background: 'rgba(255,255,255,0.2)', borderRadius: '50%', width: 36, height: 36, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="white" viewBox="0 0 16 16"><path d="M13.601 2.326A7.85 7.85 0 0 0 7.994 0C3.627 0 .068 3.558.064 7.926c0 1.399.366 2.76 1.057 3.965L0 16l4.204-1.102a7.9 7.9 0 0 0 3.79.965h.004c4.368 0 7.926-3.558 7.93-7.93A7.9 7.9 0 0 0 13.6 2.326zM7.994 14.521a6.6 6.6 0 0 1-3.356-.92l-.24-.144-2.494.654.666-2.433-.156-.251a6.56 6.56 0 0 1-1.007-3.505c0-3.626 2.957-6.584 6.591-6.584a6.56 6.56 0 0 1 4.66 1.931 6.56 6.56 0 0 1 1.928 4.66c-.004 3.639-2.961 6.592-6.592 6.592m3.615-4.934c-.197-.099-1.17-.578-1.353-.646-.182-.065-.315-.099-.445.099-.133.197-.513.646-.627.775-.114.133-.232.148-.43.05-.197-.1-.836-.308-1.592-.985-.59-.525-.985-1.175-1.103-1.372-.114-.198-.011-.304.088-.403.087-.088.197-.232.296-.346.1-.114.133-.198.198-.33.065-.134.034-.248-.015-.347-.05-.099-.445-1.076-.612-1.47-.16-.389-.323-.335-.445-.34-.114-.007-.247-.007-.38-.007a.73.73 0 0 0-.529.247c-.182.198-.691.677-.691 1.654s.71 1.916.81 2.049c.098.133 1.394 2.132 3.383 2.992.47.205.84.326 1.129.418.475.152.904.129 1.246.08.38-.058 1.171-.48 1.338-.943.164-.464.164-.86.114-.943-.049-.084-.182-.133-.38-.232"/></svg>
+              </div>
+              <div>
+                <p style={{ color: 'white', fontWeight: 700, fontSize: 13, margin: 0 }}>WhatsApp</p>
+                <p style={{ color: 'rgba(255,255,255,0.8)', fontSize: 10, margin: 0 }}>Conversa pronta para enviar</p>
+              </div>
+            </div>
+            <button onClick={() => setWaPanel(null)} style={{ background: 'rgba(255,255,255,0.2)', border: 'none', borderRadius: '50%', width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: 'white', fontSize: 16, fontWeight: 'bold' }}>×</button>
+          </div>
+
+          {/* Contact info */}
+          <div style={{ padding: '16px' }}>
+            <div style={{ background: 'rgba(255,255,255,0.05)', borderRadius: 12, padding: '12px 14px', marginBottom: 12, border: '1px solid rgba(255,255,255,0.08)' }}>
+              <p style={{ color: 'rgba(255,255,255,0.5)', fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', margin: '0 0 4px' }}>Empresa</p>
+              <p style={{ color: 'white', fontWeight: 700, fontSize: 14, margin: '0 0 8px' }}>{waPanel.empresa}</p>
+              <p style={{ color: 'rgba(255,255,255,0.5)', fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', margin: '0 0 4px' }}>Contato</p>
+              <p style={{ color: 'rgba(255,255,255,0.85)', fontSize: 13, margin: '0 0 8px' }}>{waPanel.nome}</p>
+              <p style={{ color: 'rgba(255,255,255,0.5)', fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', margin: '0 0 4px' }}>Mensagem inicial</p>
+              <p style={{ color: '#25d366', fontSize: 12, fontStyle: 'italic', margin: 0 }}>"{waPanel.text}"</p>
+            </div>
+
+            {/* Buttons */}
+            <button
+              onClick={() => window.open(`https://web.whatsapp.com/send?phone=${waPanel.phone}&text=${encodeURIComponent(waPanel.text)}`, 'nexale_wa')}
+              style={{ width: '100%', background: 'linear-gradient(135deg, #25d366 0%, #128c7e 100%)', border: 'none', borderRadius: 12, padding: '13px', color: 'white', fontWeight: 800, fontSize: 14, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, marginBottom: 8, boxShadow: '0 4px 20px rgba(37,211,102,0.35)', transition: 'transform 0.15s, box-shadow 0.15s' }}
+              onMouseEnter={e => { e.currentTarget.style.transform='scale(1.02)'; e.currentTarget.style.boxShadow='0 6px 24px rgba(37,211,102,0.5)'; }}
+              onMouseLeave={e => { e.currentTarget.style.transform='scale(1)'; e.currentTarget.style.boxShadow='0 4px 20px rgba(37,211,102,0.35)'; }}
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="white" viewBox="0 0 16 16"><path d="M13.601 2.326A7.85 7.85 0 0 0 7.994 0C3.627 0 .068 3.558.064 7.926c0 1.399.366 2.76 1.057 3.965L0 16l4.204-1.102a7.9 7.9 0 0 0 3.79.965h.004c4.368 0 7.926-3.558 7.93-7.93A7.9 7.9 0 0 0 13.6 2.326zM7.994 14.521a6.6 6.6 0 0 1-3.356-.92l-.24-.144-2.494.654.666-2.433-.156-.251a6.56 6.56 0 0 1-1.007-3.505c0-3.626 2.957-6.584 6.591-6.584a6.56 6.56 0 0 1 4.66 1.931 6.56 6.56 0 0 1 1.928 4.66c-.004 3.639-2.961 6.592-6.592 6.592m3.615-4.934c-.197-.099-1.17-.578-1.353-.646-.182-.065-.315-.099-.445.099-.133.197-.513.646-.627.775-.114.133-.232.148-.43.05-.197-.1-.836-.308-1.592-.985-.59-.525-.985-1.175-1.103-1.372-.114-.198-.011-.304.088-.403.087-.088.197-.232.296-.346.1-.114.133-.198.198-.33.065-.134.034-.248-.015-.347-.05-.099-.445-1.076-.612-1.47-.16-.389-.323-.335-.445-.34-.114-.007-.247-.007-.38-.007a.73.73 0 0 0-.529.247c-.182.198-.691.677-.691 1.654s.71 1.916.81 2.049c.098.133 1.394 2.132 3.383 2.992.47.205.84.326 1.129.418.475.152.904.129 1.246.08.38-.058 1.171-.48 1.338-.943.164-.464.164-.86.114-.943-.049-.084-.182-.133-.38-.232"/></svg>
+              Abrir no WhatsApp Web
+            </button>
+
+            <a
+              href={`whatsapp://send?phone=${waPanel.phone}&text=${encodeURIComponent(waPanel.text)}`}
+              style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, width: '100%', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 12, padding: '10px', color: 'rgba(255,255,255,0.7)', fontWeight: 700, fontSize: 12, textDecoration: 'none', boxSizing: 'border-box', transition: 'background 0.2s' }}
+              onMouseEnter={e => e.currentTarget.style.background='rgba(255,255,255,0.12)'}
+              onMouseLeave={e => e.currentTarget.style.background='rgba(255,255,255,0.06)'}
+            >
+              📱 Abrir no App WhatsApp
+            </a>
+          </div>
+        </div>
+      )}
+      {/* ====== FIM PAINEL WHATSAPP ====== */}
 
     </div>
   );
