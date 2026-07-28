@@ -1,21 +1,25 @@
 import React, { useState, useEffect, useRef } from 'react';
 
-// Referência global da janela do WhatsApp Web — garante sempre a MESMA aba
-// Usamos nome fixo 'nexale_wa' + referência real para máxima compatibilidade
+// =============================================================
+// Abre o WhatsApp Web sempre na MESMA aba — solução definitiva
+// Usamos /wa-redirect.html (mesmo domínio) para garantir que a
+// navegação cross-origin nunca seja bloqueada pelo Chrome.
+// O WhatsApp Web reseta window.name, então não podemos depender
+// de named windows. Dependemos APENAS da referência _waWindow.
+// =============================================================
 let _waWindow = null;
-const openWhatsAppWeb = (url) => {
-  try {
-    if (_waWindow && !_waWindow.closed) {
-      // Janela já aberta: navega ela para o novo número sem abrir outra aba
-      _waWindow.location.href = url;
-      _waWindow.focus();
-      return;
-    }
-  } catch (e) {
-    // Caso raro de erro cross-origin, deixa abrir com nome fixo abaixo
+const openWhatsAppWeb = (phone, text) => {
+  // URL do proxy no mesmo domínio (Vercel) → redireciona para WhatsApp Web
+  const proxyUrl = `/wa-redirect.html?phone=${phone}&text=${encodeURIComponent(text)}`;
+
+  if (_waWindow && !_waWindow.closed) {
+    // Janela já aberta: navega para o proxy do MESMO domínio (sempre permitido)
+    _waWindow.location.href = proxyUrl;
+    _waWindow.focus();
+    return;
   }
-  // Primeira vez ou janela fechada: abre com nome fixo para que próximas chamadas reutilizem
-  _waWindow = window.open(url, 'nexale_wa');
+  // Primeira vez ou janela fechada: abre nova
+  _waWindow = window.open(proxyUrl, 'nexale_wa');
   if (_waWindow) _waWindow.focus();
 };
 
@@ -3130,12 +3134,12 @@ export default function App({ session }) {
                               const rawPhone = card.telefone.replace(/\D/g, '');
                               const phone = rawPhone.length <= 11 ? '55' + rawPhone : rawPhone;
                               const firstName = card.contato !== 'Sócio/Responsável' ? card.contato.split(' ')[0] : '';
-                              const msg = encodeURIComponent(`Olá ${firstName}, tudo bem?`);
+                              const text = `Olá ${firstName}, tudo bem?`;
                               return (
                                 <div className="mt-2 flex gap-1.5 w-full">
-                                  {/* Botão WhatsApp Web — abre sempre na MESMA aba */}
+                                  {/* Botão WhatsApp Web — abre sempre na MESMA aba via proxy same-origin */}
                                   <button
-                                    onClick={() => openWhatsAppWeb(`https://web.whatsapp.com/send?phone=${phone}&text=${msg}`)}
+                                    onClick={() => openWhatsAppWeb(phone, text)}
                                     className="flex-1 bg-green-50 hover:bg-green-100 text-green-700 border border-green-200 text-xs font-bold py-1.5 px-2 rounded-lg transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
                                     title="Abrir diretamente no WhatsApp Web (mesma aba)"
                                   >

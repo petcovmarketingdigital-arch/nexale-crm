@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Abrindo WhatsApp...</title>
+  <style>
+    body { margin: 0; display: flex; align-items: center; justify-content: center;
+           height: 100vh; font-family: sans-serif; background: #f0fdf4; color: #166534; }
+    p { font-size: 1.1rem; }
+  </style>
+</head>
+<body>
+  <p>📱 Redirecionando para o WhatsApp...</p>
+  <script>
+    // Pega os parâmetros da URL e redireciona para o WhatsApp Web
+    const params = window.location.search.slice(1);
+    window.location.replace('https://web.whatsapp.com/send?' + params);
+  </script>
+</body>
+</html>
