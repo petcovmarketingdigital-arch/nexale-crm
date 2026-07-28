@@ -264,6 +264,102 @@ app.post('/api/scrape-gmaps', async (req, res) => {
   }
 });
 
+// Endpoint de Webhook da Evolution API (Recepção de mensagens em tempo real)
+app.post('/api/webhook/evolution', async (req, res) => {
+  try {
+    const body = req.body || {};
+    const event = body.event || body.type;
+
+    if (event === 'messages.upsert' || event === 'MESSAGES_UPSERT') {
+      const data = body.data || {};
+      const key = data.key || {};
+      const fromMe = key.fromMe || false;
+      const remoteJid = key.remoteJid || '';
+
+      if (remoteJid && remoteJid.includes('@s.whatsapp.net')) {
+        const rawPhone = remoteJid.split('@')[0];
+        let phone = rawPhone.replace(/\D/g, '');
+
+        const msgObj = data.message || {};
+        const text = msgObj.conversation || 
+                     (msgObj.extendedTextMessage && msgObj.extendedTextMessage.text) || 
+                     (msgObj.imageMessage && (msgObj.imageMessage.caption || '[Imagem]')) ||
+                     (msgObj.audioMessage && '[Áudio]') || '';
+
+        if (text) {
+          const pushName = data.pushName || 'Cliente';
+          console.log(`📩 [WA Webhook] ${fromMe ? 'Enviada' : 'Recebida'} (${phone}): ${text}`);
+
+          const { data: leadMatch } = await supabaseAdmin.from('leads').select('id, user_id').or(`telefone.ilike.%${phone.slice(-8)}%`).limit(1);
+
+          let targetLeadId = null;
+          let targetUserId = null;
+
+          if (leadMatch && leadMatch.length > 0) {
+            targetLeadId = leadMatch[0].id;
+            targetUserId = leadMatch[0].user_id;
+          } else if (!fromMe) {
+            const { data: newLead } = await supabaseAdmin.from('leads').insert([{
+              empresa: pushName,
+              contato: pushName,
+              telefone: phone,
+              coluna_id: 'leads',
+              origem: 'WhatsApp Receptor',
+              company_id: body.instance || null
+            }]).select('id, user_id').single();
+
+            if (newLead) {
+              targetLeadId = newLead.id;
+              targetUserId = newLead.user_id;
+            }
+          }
+
+          if (targetLeadId) {
+            const prefix = fromMe ? '[WA:out]' : '[WA:in]';
+            await supabaseAdmin.from('lead_notes').insert([{
+              lead_id: targetLeadId,
+              user_id: targetUserId,
+              nota: `${prefix} ${pushName}: ${text}`
+            }]);
+          }
+        }
+      }
+    }
+    return res.status(200).json({ status: 'ok' });
+  } catch (err) {
+    console.error('❌ Erro no webhook /api/webhook/evolution:', err.message);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// Endpoint para envio direto de mensagens do Chat pelo CRM
+app.post('/api/send-chat-message', async (req, res) => {
+  try {
+    const { leadId, companyId, phone, text } = req.body;
+    if (!phone || !text) {
+      return res.status(400).json({ error: 'Telefone e texto são obrigatórios.' });
+    }
+
+    await sendWahaMessage(companyId || 'superadmin', phone, text);
+
+    if (leadId) {
+      const { data: leadMatch } = await supabaseAdmin.from('leads').select('user_id').eq('id', leadId).single();
+      const userId = leadMatch ? leadMatch.user_id : null;
+
+      await supabaseAdmin.from('lead_notes').insert([{
+        lead_id: leadId,
+        user_id: userId,
+        nota: `[WA:out] Atendente: ${text}`
+      }]);
+    }
+
+    return res.json({ success: true });
+  } catch (err) {
+    console.error('❌ Erro ao enviar mensagem no chat:', err.message);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
 
 // Supabase Connection
 const supabaseUrl = 'https://zdlybiifkambebscydsp.supabase.co';

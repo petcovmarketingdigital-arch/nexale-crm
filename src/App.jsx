@@ -376,6 +376,47 @@ export default function App({ session }) {
   // Painel WhatsApp lateral
   const [waPanel, setWaPanel] = useState(null); // null | { nome, empresa, phone, text }
 
+  // Live Chat Inbox WhatsApp
+  const [waSubTab, setWaSubTab] = useState('chat');
+  const [selectedChatLead, setSelectedChatLead] = useState(null);
+  const [chatMessages, setChatMessages] = useState([]);
+  const [chatInputText, setChatInputText] = useState('');
+  const [isSendingChatMessage, setIsSendingChatMessage] = useState(false);
+  const [chatSearchQuery, setChatSearchQuery] = useState('');
+
+  const fetchChatMessages = async (leadId) => {
+    if (!leadId) return;
+    try {
+      const { data, error } = await supabase
+        .from('lead_notes')
+        .select('*')
+        .eq('lead_id', leadId)
+        .order('created_at', { ascending: true });
+      if (!error && data) {
+        setChatMessages(data.filter(n => n.nota && (n.nota.startsWith('[WA:') || n.nota.startsWith('[WhatsApp]'))));
+      }
+    } catch (e) {
+      console.warn('Erro ao buscar mensagens do chat:', e.message);
+    }
+  };
+
+  // Real-time polling para novas mensagens no Chat (3s)
+  useEffect(() => {
+    let timer;
+    if (currentView === 'whatsapp' && waSubTab === 'chat') {
+      const activeId = selectedChatLead?.id || (columns.flatMap(c => c.cards || [])[0]?.id);
+      if (activeId) {
+        fetchChatMessages(activeId);
+        timer = setInterval(() => {
+          fetchChatMessages(activeId);
+        }, 3000);
+      }
+    }
+    return () => {
+      if (timer) clearInterval(timer);
+    };
+  }, [currentView, waSubTab, selectedChatLead?.id, columns]);
+
   // Captação B2B Google Maps & CNPJ
   const [b2bTab, setB2bTab] = useState('gmaps');
   const [gmapsKeyword, setGmapsKeyword] = useState('');
@@ -4075,104 +4116,308 @@ export default function App({ session }) {
 
       {currentView === 'superadmin' && <SuperAdminPanel />}
 
-      {currentView === 'whatsapp' && (
-        <div className="max-w-2xl mx-auto space-y-6 mt-8 animate-fade-in">
-          <div className="bg-white p-8 rounded-xl shadow-sm shadow-indigo-900/5 border border-slate-100 text-center">
-            <div className="w-16 h-16 bg-green-100 rounded-2xl mx-auto mb-4 flex items-center justify-center">
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" /></svg>
+      {currentView === 'whatsapp' && (() => {
+        const allCards = columns.flatMap(col => col.cards || []);
+        const activeLead = selectedChatLead || (allCards.length > 0 ? allCards[0] : null);
+
+        return (
+          <div className="max-w-7xl mx-auto mt-4 space-y-4 animate-fade-in px-2">
+            {/* Top Navigation for WhatsApp Sub-tabs */}
+            <div className="flex items-center justify-between bg-white p-3 rounded-2xl shadow-sm border border-slate-100">
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setWaSubTab('chat')}
+                  className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
+                    waSubTab === 'chat'
+                      ? 'bg-emerald-600 text-white shadow-md shadow-emerald-600/20 font-black'
+                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                  }`}
+                >
+                  <span>💬 Central de Conversas (Live Chat)</span>
+                </button>
+                <button
+                  onClick={() => setWaSubTab('connection')}
+                  className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
+                    waSubTab === 'connection'
+                      ? 'bg-emerald-600 text-white shadow-md shadow-emerald-600/20 font-black'
+                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                  }`}
+                >
+                  <span>🔌 Status / QR Code Conexão</span>
+                  {waConnected && <span className="w-2 h-2 rounded-full bg-green-400 animate-pulse"></span>}
+                </button>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <span className={`text-xs font-bold px-3 py-1 rounded-full ${waConnected ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}`}>
+                  {waConnected ? '🟢 WhatsApp Conectado' : '🟠 Aguardando Conexão'}
+                </span>
+              </div>
             </div>
-            <h2 className="text-2xl font-black text-slate-800 mb-2">Conecte o seu WhatsApp</h2>
-            <p className="text-slate-500 mb-8 max-w-md mx-auto">Para que a Nexale envie mensagens automaticamente para seus leads, você precisa conectar o número da sua empresa.</p>
-            
-            <div className="border-2 border-dashed border-slate-200 rounded-xl p-8 bg-slate-50 relative overflow-hidden">
-              <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-green-400 to-emerald-500"></div>
-              
-              {waConnected ? (
-                <div className="flex flex-col items-center py-8">
-                  <div className="w-24 h-24 bg-green-100 rounded-full flex items-center justify-center mb-6 shadow-inner">
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-12 w-12 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                    </svg>
+
+            {/* Sub-tab 1: Central de Conversas (Live Chat) */}
+            {waSubTab === 'chat' && (
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 h-[720px] bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+                {/* Coluna Esquerda: Lista de Conversas / Leads (4 cols) */}
+                <div className="lg:col-span-4 border-r border-slate-100 flex flex-col h-full bg-slate-50/50">
+                  <div className="p-3 border-b border-slate-100 bg-white">
+                    <input
+                      type="text"
+                      placeholder="🔍 Buscar conversa ou telefone..."
+                      value={chatSearchQuery}
+                      onChange={e => setChatSearchQuery(e.target.value)}
+                      className="w-full bg-slate-100 border border-slate-200 rounded-xl px-3 py-2 text-xs outline-none focus:border-emerald-500 font-medium"
+                    />
                   </div>
-                  <h3 className="text-2xl font-bold text-slate-800 mb-2">Conectado com Sucesso!</h3>
-                  <p className="text-slate-500 mb-2 font-medium">Sua conta ({waUser}) está vinculada à Nexale.</p>
-                  <p className="text-sm text-slate-400 mb-8">As mensagens automáticas serão disparadas quando você mover cards no Kanban.</p>
 
-                  <button 
-                    onClick={() => setCurrentView('campanha')}
-                    className="bg-orange-500 hover:bg-orange-600 text-slate-900 font-bold py-4 px-8 rounded-xl transition-all shadow-lg shadow-orange-500/30 transform hover:-translate-y-0.5 w-full max-w-sm flex items-center justify-center gap-3 text-lg mb-3"
-                  >
-                    <span>🚀 Ir para Campanhas</span>
-                  </button>
-
-                  <button 
-                    onClick={() => setCurrentView('kanban')}
-                    className="bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold py-3 px-8 rounded-xl transition-all w-full max-w-sm flex items-center justify-center gap-2 text-sm"
-                  >
-                    📋 Voltar ao Kanban
-                  </button>
-
-                  <button 
-                    onClick={async () => {
-                      if (window.confirm('Tem certeza que deseja desconectar o seu WhatsApp? Você terá que ler o QR Code novamente.')) {
-                        try {
-                          const activeInstance = userRole === 'superadmin' ? 'superadmin' : companyId;
-                          await fetch(`/evolution/instance/logout/${activeInstance}`, {
-                            method: 'DELETE',
-                            headers: { 'apikey': '123' }
-                          });
-                        } catch(e) {
-                          console.warn('Erro ao desconectar no servidor:', e);
-                        }
-                        setIsWahaConnected(false);
-                        setWaConnected(false);
-                        setWaUser('');
-                        handleGenerateQR();
-                      }
-                    }}
-                    className="mt-6 text-xs font-bold text-red-500 hover:text-red-700 transition-colors underline"
-                  >
-                    Desconectar WhatsApp
-                  </button>
+                  <div className="flex-1 overflow-y-auto divide-y divide-slate-100 minimal-scrollbar">
+                    {allCards
+                      .filter(card => {
+                        if (!chatSearchQuery) return true;
+                        const q = chatSearchQuery.toLowerCase();
+                        return (card.empresa && card.empresa.toLowerCase().includes(q)) ||
+                               (card.contato && card.contato.toLowerCase().includes(q)) ||
+                               (card.telefone && card.telefone.includes(q));
+                      })
+                      .map(card => {
+                        const isSelected = activeLead && activeLead.id === card.id;
+                        return (
+                          <div
+                            key={card.id}
+                            onClick={() => setSelectedChatLead(card)}
+                            className={`p-3.5 flex items-center gap-3 cursor-pointer transition-all ${
+                              isSelected ? 'bg-emerald-50/80 border-l-4 border-emerald-600' : 'hover:bg-slate-100/80'
+                            }`}
+                          >
+                            <div className="w-10 h-10 rounded-full bg-emerald-600 text-white font-bold text-sm flex items-center justify-center shrink-0 shadow-xs">
+                              {(card.contato || card.empresa || 'C').charAt(0).toUpperCase()}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center justify-between mb-0.5">
+                                <h4 className="font-bold text-slate-800 text-xs truncate">{card.empresa || card.contato}</h4>
+                              </div>
+                              <p className="text-[11px] text-slate-500 truncate font-medium">{card.contato} • {card.telefone}</p>
+                            </div>
+                          </div>
+                        );
+                      })}
+                  </div>
                 </div>
-              ) : (
-                <>
-                  <p className="text-sm font-bold text-slate-400 mb-6 uppercase tracking-wider">Passo a Passo</p>
-                  <ol className="text-left text-sm text-slate-600 mb-8 space-y-3 font-medium max-w-sm mx-auto">
-                    <li className="flex gap-3"><span className="bg-white border border-slate-200 rounded-full w-5 h-5 flex items-center justify-center text-xs font-bold shrink-0">1</span> Abra o WhatsApp no seu celular</li>
-                    <li className="flex gap-3"><span className="bg-white border border-slate-200 rounded-full w-5 h-5 flex items-center justify-center text-xs font-bold shrink-0">2</span> Toque em Mais opções (⋮) ou Configurações</li>
-                    <li className="flex gap-3"><span className="bg-white border border-slate-200 rounded-full w-5 h-5 flex items-center justify-center text-xs font-bold shrink-0">3</span> Toque em Dispositivos conectados e Conectar um dispositivo</li>
-                  </ol>
-                  
-                  {!qrCodeImage ? (
-                    <button 
-                      onClick={handleGenerateQR}
-                      disabled={isGeneratingQR}
-                      className="bg-green-500 hover:bg-green-600 text-slate-900 font-bold py-3 px-6 rounded-xl transition-all shadow-lg shadow-green-500/30 transform hover:-translate-y-0.5 w-full max-w-xs disabled:opacity-50"
-                    >
-                      {isGeneratingQR ? 'Gerando...' : 'Gerar QR Code de Conexão'}
-                    </button>
-                  ) : (
-                    <div className="flex flex-col items-center animate-fade-in">
-                      <div className="p-2 bg-white rounded-xl shadow-md shadow-indigo-900/10 border-4 border-white mb-4">
-                        <img src={qrCodeImage} alt="WhatsApp QR Code" className="w-64 h-64 object-contain" />
+
+                {/* Coluna Central: Janela do Chat (8 cols) */}
+                <div className="lg:col-span-8 flex flex-col h-full bg-slate-100/40">
+                  {activeLead ? (
+                    <>
+                      {/* Header da Conversa Ativa */}
+                      <div className="p-3.5 bg-white border-b border-slate-100 flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          <div className="w-9 h-9 rounded-full bg-emerald-600 text-white font-bold text-xs flex items-center justify-center shadow-xs">
+                            {(activeLead.contato || activeLead.empresa || 'C').charAt(0).toUpperCase()}
+                          </div>
+                          <div>
+                            <h3 className="font-bold text-slate-800 text-sm leading-tight">{activeLead.empresa}</h3>
+                            <p className="text-[11px] text-slate-500 font-semibold">{activeLead.contato} • {activeLead.telefone}</p>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                          <span className="text-[10px] font-extrabold px-2.5 py-1 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200">
+                            Etapa: {activeLead.coluna_id || 'Leads'}
+                          </span>
+                        </div>
                       </div>
-                      <p className="text-sm font-bold text-slate-600">Escaneie o código com seu WhatsApp para conectar.</p>
-                      <button 
-                        onClick={() => setQrCodeImage(null)} 
-                        className="mt-4 text-xs font-bold text-slate-400 hover:text-slate-600 transition-colors"
+
+                      {/* Stream de Mensagens */}
+                      <div className="flex-1 p-4 overflow-y-auto space-y-3 minimal-scrollbar bg-[#efeae2]/30">
+                        {chatMessages.length === 0 ? (
+                          <div className="flex flex-col items-center justify-center h-full text-slate-400 text-center py-12">
+                            <p className="text-sm font-bold text-slate-600 mb-1">Nenhuma mensagem recente gravada ainda</p>
+                            <p className="text-xs">Digite uma mensagem abaixo para iniciar o atendimento no WhatsApp!</p>
+                          </div>
+                        ) : (
+                          chatMessages.map(msg => {
+                            const isOut = msg.nota && msg.nota.startsWith('[WA:out]');
+                            const cleanText = msg.nota ? msg.nota.replace(/^\[WA:(in|out)\]\s*/, '') : '';
+                            return (
+                              <div key={msg.id} className={`flex ${isOut ? 'justify-end' : 'justify-start'}`}>
+                                <div className={`max-w-[75%] rounded-2xl px-4 py-2.5 shadow-xs text-xs font-medium ${
+                                  isOut ? 'bg-emerald-600 text-white rounded-br-none' : 'bg-white text-slate-800 rounded-bl-none border border-slate-200/60'
+                                }`}>
+                                  <p className="whitespace-pre-wrap leading-relaxed">{cleanText}</p>
+                                  <span className={`text-[9px] block text-right mt-1 ${isOut ? 'text-emerald-100' : 'text-slate-400'}`}>
+                                    {new Date(msg.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                                  </span>
+                                </div>
+                              </div>
+                            );
+                          })
+                        )}
+                      </div>
+
+                      {/* Chips de Resposta Rápida */}
+                      <div className="px-3 py-1.5 bg-white border-t border-slate-100 flex gap-1.5 overflow-x-auto minimal-scrollbar">
+                        {['Olá, como posso ajudar?', 'Segue nosso orçamento', 'Qual é a sua cidade?', 'Podemos agendar uma ligação?'].map((tmpl, idx) => (
+                          <button
+                            key={idx}
+                            onClick={() => setChatInputText(tmpl)}
+                            className="text-[10px] font-bold bg-slate-100 hover:bg-emerald-50 hover:text-emerald-700 text-slate-600 px-2.5 py-1 rounded-full whitespace-nowrap transition-colors border border-slate-200 cursor-pointer"
+                          >
+                            + {tmpl}
+                          </button>
+                        ))}
+                      </div>
+
+                      {/* Input de Envio de Mensagem */}
+                      <form
+                        onSubmit={async (e) => {
+                          e.preventDefault();
+                          if (!chatInputText.trim() || isSendingChatMessage) return;
+                          setIsSendingChatMessage(true);
+                          const textToSend = chatInputText;
+                          setChatInputText('');
+
+                          try {
+                            const activeInst = userRole === 'superadmin' ? 'superadmin' : companyId;
+                            const res = await fetch('/api/send-chat-message', {
+                              method: 'POST',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({
+                                leadId: activeLead.id,
+                                companyId: activeInst,
+                                phone: activeLead.telefone,
+                                text: textToSend
+                              })
+                            });
+                            if (!res.ok) throw new Error('Falha ao enviar mensagem');
+                            fetchChatMessages(activeLead.id);
+                          } catch (err) {
+                            alert('Erro ao enviar: ' + err.message);
+                          } finally {
+                            setIsSendingChatMessage(false);
+                          }
+                        }}
+                        className="p-3 bg-white border-t border-slate-100 flex gap-2"
                       >
-                        Gerar novo código
-                      </button>
+                        <input
+                          type="text"
+                          placeholder="Digite sua mensagem para o cliente no WhatsApp..."
+                          value={chatInputText}
+                          onChange={e => setChatInputText(e.target.value)}
+                          disabled={isSendingChatMessage}
+                          className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-xs outline-none focus:border-emerald-500 font-medium text-slate-800"
+                        />
+                        <button
+                          type="submit"
+                          disabled={isSendingChatMessage || !chatInputText.trim()}
+                          className="bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl px-5 py-2.5 text-xs font-bold transition-all shadow-md shadow-emerald-600/20 disabled:opacity-50 flex items-center gap-1.5 cursor-pointer"
+                        >
+                          <span>🚀 Enviar</span>
+                        </button>
+                      </form>
+                    </>
+                  ) : (
+                    <div className="flex flex-col items-center justify-center h-full text-slate-400">
+                      <p className="font-bold text-sm">Selecione uma conversa na lista à esquerda</p>
                     </div>
                   )}
-                </>
-              )}
-            </div>
-          </div>
+                </div>
+              </div>
+            )}
 
-        </div>
-      )}
+            {/* Sub-tab 2: Status / Conexão (QR Code) */}
+            {waSubTab === 'connection' && (
+              <div className="max-w-2xl mx-auto space-y-6 py-6">
+                <div className="bg-white p-8 rounded-xl shadow-sm border border-slate-100 text-center">
+                  <div className="w-16 h-16 bg-green-100 rounded-2xl mx-auto mb-4 flex items-center justify-center">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" /></svg>
+                  </div>
+                  <h2 className="text-2xl font-black text-slate-800 mb-2">Conecte o seu WhatsApp</h2>
+                  <p className="text-slate-500 mb-8 max-w-md mx-auto">Para que a Nexale envie mensagens automaticamente para seus leads, você precisa conectar o número da sua empresa.</p>
+
+                  <div className="border-2 border-dashed border-slate-200 rounded-xl p-8 bg-slate-50 relative overflow-hidden">
+                    <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-green-400 to-emerald-500"></div>
+
+                    {waConnected ? (
+                      <div className="flex flex-col items-center py-8">
+                        <div className="w-24 h-24 bg-green-100 rounded-full flex items-center justify-center mb-6 shadow-inner">
+                          <svg xmlns="http://www.w3.org/2000/svg" className="h-12 w-12 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                          </svg>
+                        </div>
+                        <h3 className="text-2xl font-bold text-slate-800 mb-2">Conectado com Sucesso!</h3>
+                        <p className="text-slate-500 mb-2 font-medium">Sua conta ({waUser}) está vinculada à Nexale.</p>
+                        <p className="text-sm text-slate-400 mb-8">Você pode conversar em tempo real na aba Central de Conversas!</p>
+
+                        <button 
+                          onClick={() => setWaSubTab('chat')}
+                          className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-4 px-8 rounded-xl transition-all shadow-lg shadow-emerald-600/30 transform hover:-translate-y-0.5 w-full max-w-sm flex items-center justify-center gap-3 text-lg mb-3"
+                        >
+                          <span>💬 Ir para Central de Conversas</span>
+                        </button>
+
+                        <button 
+                          onClick={async () => {
+                            if (window.confirm('Tem certeza que deseja desconectar o seu WhatsApp? Você terá que ler o QR Code novamente.')) {
+                              try {
+                                const activeInstance = userRole === 'superadmin' ? 'superadmin' : companyId;
+                                await fetch(`/evolution/instance/logout/${activeInstance}`, {
+                                  method: 'DELETE',
+                                  headers: { 'apikey': '123' }
+                                });
+                              } catch(e) {
+                                console.warn('Erro ao desconectar no servidor:', e);
+                              }
+                              setIsWahaConnected(false);
+                              setWaConnected(false);
+                              setWaUser('');
+                              handleGenerateQR();
+                            }
+                          }}
+                          className="mt-6 text-xs font-bold text-red-500 hover:text-red-700 transition-colors underline"
+                        >
+                          Desconectar WhatsApp
+                        </button>
+                      </div>
+                    ) : (
+                      <>
+                        <p className="text-sm font-bold text-slate-400 mb-6 uppercase tracking-wider">Passo a Passo</p>
+                        <ol className="text-left text-sm text-slate-600 mb-8 space-y-3 font-medium max-w-sm mx-auto">
+                          <li className="flex gap-3"><span className="bg-white border border-slate-200 rounded-full w-5 h-5 flex items-center justify-center text-xs font-bold shrink-0">1</span> Abra o WhatsApp no seu celular</li>
+                          <li className="flex gap-3"><span className="bg-white border border-slate-200 rounded-full w-5 h-5 flex items-center justify-center text-xs font-bold shrink-0">2</span> Toque em Mais opções (⋮) ou Configurações</li>
+                          <li className="flex gap-3"><span className="bg-white border border-slate-200 rounded-full w-5 h-5 flex items-center justify-center text-xs font-bold shrink-0">3</span> Toque em Dispositivos conectados e Conectar um dispositivo</li>
+                        </ol>
+
+                        {!qrCodeImage ? (
+                          <button 
+                            onClick={handleGenerateQR}
+                            disabled={isGeneratingQR}
+                            className="bg-green-500 hover:bg-green-600 text-slate-900 font-bold py-3 px-6 rounded-xl transition-all shadow-lg shadow-green-500/30 transform hover:-translate-y-0.5 w-full max-w-xs disabled:opacity-50"
+                          >
+                            {isGeneratingQR ? 'Gerando...' : 'Gerar QR Code de Conexão'}
+                          </button>
+                        ) : (
+                          <div className="flex flex-col items-center animate-fade-in">
+                            <div className="p-2 bg-white rounded-xl shadow-md shadow-indigo-900/10 border-4 border-white mb-4">
+                              <img src={qrCodeImage} alt="WhatsApp QR Code" className="w-64 h-64 object-contain" />
+                            </div>
+                            <p className="text-sm font-bold text-slate-600">Escaneie o código com seu WhatsApp para conectar.</p>
+                            <button 
+                              onClick={() => setQrCodeImage(null)} 
+                              className="mt-4 text-xs font-bold text-slate-400 hover:text-slate-600 transition-colors"
+                            >
+                              Gerar novo código
+                            </button>
+                          </div>
+                        )}
+                      </>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        );
+      })()}
 
       {currentView === 'ai_config' && (
         <div className="max-w-2xl mx-auto space-y-6 mt-8 animate-fade-in">
