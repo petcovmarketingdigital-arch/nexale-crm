@@ -475,31 +475,88 @@ const sendWahaMedia = async (companyId, phoneNumber, mediaType, mimeType, base64
     clean = '55' + clean;
   }
   const rawBase64 = base64Media.includes('base64,') ? base64Media.split('base64,')[1] : base64Media;
-  
   const targetInstance = getTargetInstance(companyId);
 
-  // Simula digitação por 2 a 5 segundos antes de enviar (imita humano)
-  const typingDuration = Math.floor(Math.random() * 3000) + 2000;
-  await simulateTyping(targetInstance, clean, typingDuration);
-
-  const res = await fetch(`http://localhost:8080/message/sendMedia/${targetInstance}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'apikey': '123' },
-    body: JSON.stringify({
-      number: clean,
-      mediatype: mediaType,
-      mimetype: mimeType,
-      media: rawBase64,
-      fileName: fileName,
-      caption: caption
-    })
-  });
-  if (!res.ok) {
-    const err = await res.text();
-    throw new Error(`Evolution API returned ${res.status}: ${err}`);
+  // Tenta enviar com o número original
+  try {
+    const res = await fetch(`http://localhost:8080/message/sendMedia/${targetInstance}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'apikey': '123' },
+      body: JSON.stringify({
+        number: clean,
+        mediatype: mediaType,
+        mimetype: mimeType,
+        media: rawBase64,
+        fileName: fileName,
+        caption: caption
+      })
+    });
+    if (res.ok) return res;
+  } catch (e) {
+    console.warn(`  ⚠️  Tentativa 1 mídia falhou para ${clean}:`, e.message);
   }
-  return res;
+
+  // Fallback sem o 9º dígito se aplicável
+  if (clean.length === 13 && clean.startsWith('55')) {
+    const ddd = clean.slice(2, 4);
+    const ninth = clean[4];
+    const rest = clean.slice(5);
+    if (ninth === '9') {
+      const altNumber = '55' + ddd + rest;
+      console.log(`  🔄 Tentando mídia no número alternativo: ${altNumber}`);
+      try {
+        const resAlt = await fetch(`http://localhost:8080/message/sendMedia/${targetInstance}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'apikey': '123' },
+          body: JSON.stringify({
+            number: altNumber,
+            mediatype: mediaType,
+            mimetype: mimeType,
+            media: rawBase64,
+            fileName: fileName,
+            caption: caption
+          })
+        });
+        if (resAlt.ok) return resAlt;
+      } catch (e2) {
+        console.warn(`  ⚠️  Tentativa 2 mídia falhou para ${altNumber}:`, e2.message);
+      }
+    }
+  }
+
+  throw new Error(`Não foi possível entregar a mídia para o número ${phoneNumber}`);
 };
+
+// Endpoint para envio de arquivos/mídia do Chat pelo CRM
+app.post('/api/send-chat-media', async (req, res) => {
+  try {
+    const { leadId, companyId, phone, mediaType, mimeType, base64Data, fileName, caption } = req.body;
+    if (!phone || !base64Data) {
+      return res.status(400).json({ error: 'Telefone e arquivo são obrigatórios.' });
+    }
+
+    await sendWahaMedia(companyId || 'superadmin', phone, mediaType || 'document', mimeType || 'application/octet-stream', base64Data, fileName || 'arquivo', caption || '');
+
+    if (leadId) {
+      const { data: leadMatch } = await supabaseAdmin.from('leads').select('user_id').eq('id', leadId).single();
+      const userId = leadMatch ? leadMatch.user_id : null;
+
+      const mediaIcon = mediaType === 'image' ? '🖼️' : mediaType === 'video' ? '🎥' : mediaType === 'audio' ? '🎵' : '📁';
+      const capText = caption ? ` - ${caption}` : '';
+
+      await supabaseAdmin.from('lead_notes').insert([{
+        lead_id: leadId,
+        user_id: userId,
+        nota: `[WA:out] Atendente: ${mediaIcon} [${fileName || 'Arquivo'}]${capText}`
+      }]);
+    }
+
+    return res.json({ success: true });
+  } catch (err) {
+    console.error('❌ Erro no /api/send-chat-media:', err.message);
+    return res.status(500).json({ error: err.message });
+  }
+});
 
 // Helper to resolve Brazilian phone variants (with/without DDI 55, with/without extra 9)
 function getPhoneVariants(phone) {

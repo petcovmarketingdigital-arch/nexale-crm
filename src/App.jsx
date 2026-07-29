@@ -380,11 +380,78 @@ export default function App({ session }) {
   const [waSubTab, setWaSubTab] = useState('chat');
   const [selectedChatLead, setSelectedChatLead] = useState(null);
   const [chatMessages, setChatMessages] = useState([]);
-  const [chatInputText, setChatInputText] = useState('');
-  const [isSendingChatMessage, setIsSendingChatMessage] = useState(false);
-  const [chatSearchQuery, setChatSearchQuery] = useState('');
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const [isUploadingMedia, setIsUploadingMedia] = useState(false);
+  const chatFileInputRef = useRef(null);
   const chatBottomRef = useRef(null);
   const prevMsgCountRef = useRef(0);
+
+  const handleChatFileChange = async (e) => {
+    const file = e.target.files?.[0];
+    const activeLead = selectedChatLead || (columns.flatMap(c => c.cards || [])[0]);
+    if (!file || !activeLead) return;
+
+    setIsUploadingMedia(true);
+    try {
+      const activeInst = userRole === 'superadmin' ? 'superadmin' : companyId;
+      const reader = new FileReader();
+
+      reader.onload = async () => {
+        const base64Data = reader.result;
+        let mediaType = 'document';
+        if (file.type.startsWith('image/')) mediaType = 'image';
+        else if (file.type.startsWith('video/')) mediaType = 'video';
+        else if (file.type.startsWith('audio/')) mediaType = 'audio';
+
+        let res = await fetch('/api/send-chat-media', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            leadId: activeLead.id,
+            companyId: activeInst,
+            phone: activeLead.telefone,
+            mediaType,
+            mimeType: file.type || 'application/octet-stream',
+            base64Data,
+            fileName: file.name,
+            caption: chatInputText || ''
+          })
+        });
+
+        if (!res.ok) {
+          res = await fetch('https://app.nexalecrm.com.br/api/send-chat-media', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              leadId: activeLead.id,
+              companyId: activeInst,
+              phone: activeLead.telefone,
+              mediaType,
+              mimeType: file.type || 'application/octet-stream',
+              base64Data,
+              fileName: file.name,
+              caption: chatInputText || ''
+            })
+          });
+        }
+
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}));
+          throw new Error(errData.error || `Erro ${res.status}`);
+        }
+
+        setChatInputText('');
+        fetchChatMessages(activeLead);
+      };
+
+      reader.readAsDataURL(file);
+    } catch (err) {
+      alert('Erro ao enviar arquivo: ' + err.message);
+    } finally {
+      setIsUploadingMedia(false);
+      if (chatFileInputRef.current) chatFileInputRef.current.value = '';
+    }
+  };
 
   useEffect(() => {
     if (chatMessages.length > prevMsgCountRef.current) {
@@ -4311,8 +4378,9 @@ export default function App({ session }) {
                       <form
                         onSubmit={async (e) => {
                           e.preventDefault();
-                          if (!chatInputText.trim() || isSendingChatMessage) return;
+                          if (!chatInputText.trim() || isSendingChatMessage || isUploadingMedia) return;
                           setIsSendingChatMessage(true);
+                          setShowEmojiPicker(false);
                           const textToSend = chatInputText;
                           setChatInputText('');
 
@@ -4330,7 +4398,6 @@ export default function App({ session }) {
                             });
 
                             if (!res.ok) {
-                              // Fallback para URL absoluta do VPS
                               res = await fetch('https://app.nexalecrm.com.br/api/send-chat-message', {
                                 method: 'POST',
                                 headers: { 'Content-Type': 'application/json' },
@@ -4355,22 +4422,68 @@ export default function App({ session }) {
                             setIsSendingChatMessage(false);
                           }
                         }}
-                        className="p-3 bg-white border-t border-slate-100 flex gap-2"
+                        className="p-3 bg-white border-t border-slate-100 flex gap-2 items-center relative"
                       >
+                        {/* Popover de Emojis */}
+                        {showEmojiPicker && (
+                          <div className="absolute bottom-16 left-3 bg-white border border-slate-200 rounded-2xl shadow-xl p-3 w-72 h-56 overflow-y-auto grid grid-cols-8 gap-1.5 z-50 text-base minimal-scrollbar">
+                            {['😀','😃','😄','😁','😆','😅','😂','🤣','😊','😇','🙂','🙃','😉','😌','😍','🥰','😘','😋','😛','😜','🤪','🤑','🤗','🤭','🤫','🤔','🤐','🤨','😐','😑','😏','😒','🙄','😬','🤥','😌','😔','😪','😴','😷','🤒','🤢','🤮','🤯','🤠','🥳','😎','🤓','🧐','😕','😟','😮','😲','😳','🥺','😦','😧','😨','😰','😥','😢','😭','😱','😖','😣','😞','😓','😩','😫','🥱','😤','😡','😠','💀','💩','🤡','👻','👽','🤖','👍','👎','👊','✊','👏','🙌','👐','🤝','✍️','🤳','💪','❤️','🧡','💛','💚','💙','💜','🖤','🤍','💔','🎉','🚀','🔥','✨','📦','💼','💰','💳','🏷️','📍','📞','✉️'].map((emoji, idx) => (
+                              <button
+                                key={idx}
+                                type="button"
+                                onClick={() => {
+                                  setChatInputText(prev => prev + emoji);
+                                }}
+                                className="hover:bg-slate-100 p-1.5 rounded-lg transition-colors text-center cursor-pointer"
+                              >
+                                {emoji}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+
+                        {/* Botão Emoji */}
+                        <button
+                          type="button"
+                          onClick={() => setShowEmojiPicker(!showEmojiPicker)}
+                          className="p-2 text-slate-500 hover:text-amber-500 hover:bg-amber-50 rounded-xl transition-colors text-lg cursor-pointer"
+                          title="Inserir Emoji"
+                        >
+                          😀
+                        </button>
+
+                        {/* Botão Anexo (Fotos, Vídeos, Documentos) */}
+                        <input
+                          type="file"
+                          ref={chatFileInputRef}
+                          onChange={handleChatFileChange}
+                          accept="image/*,video/*,audio/*,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain"
+                          className="hidden"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => chatFileInputRef.current?.click()}
+                          disabled={isUploadingMedia}
+                          className="p-2 text-slate-500 hover:text-emerald-600 hover:bg-emerald-50 rounded-xl transition-colors text-lg cursor-pointer disabled:opacity-50"
+                          title="Anexar Imagem, Vídeo ou Documento"
+                        >
+                          {isUploadingMedia ? '⏳' : '📎'}
+                        </button>
+
                         <input
                           type="text"
-                          placeholder="Digite sua mensagem para o cliente no WhatsApp..."
+                          placeholder={isUploadingMedia ? "Enviando arquivo..." : "Digite sua mensagem para o cliente no WhatsApp..."}
                           value={chatInputText}
                           onChange={e => setChatInputText(e.target.value)}
-                          disabled={isSendingChatMessage}
+                          disabled={isSendingChatMessage || isUploadingMedia}
                           className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-xs outline-none focus:border-emerald-500 font-medium text-slate-800"
                         />
                         <button
                           type="submit"
-                          disabled={isSendingChatMessage || !chatInputText.trim()}
+                          disabled={isSendingChatMessage || isUploadingMedia || !chatInputText.trim()}
                           className="bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl px-5 py-2.5 text-xs font-bold transition-all shadow-md shadow-emerald-600/20 disabled:opacity-50 flex items-center gap-1.5 cursor-pointer"
                         >
-                          <span>🚀 Enviar</span>
+                          <span>{isSendingChatMessage || isUploadingMedia ? 'Enviando...' : '🚀 Enviar'}</span>
                         </button>
                       </form>
                     </>
