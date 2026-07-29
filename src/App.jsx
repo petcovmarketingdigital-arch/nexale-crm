@@ -384,14 +384,28 @@ export default function App({ session }) {
   const [isSendingChatMessage, setIsSendingChatMessage] = useState(false);
   const [chatSearchQuery, setChatSearchQuery] = useState('');
 
-  const fetchChatMessages = async (leadId) => {
-    if (!leadId) return;
+  const fetchChatMessages = async (lead) => {
+    if (!lead) return;
     try {
+      const cleanPhone = lead.telefone ? lead.telefone.replace(/\D/g, '').slice(-8) : '';
+      let leadIds = [lead.id];
+
+      if (cleanPhone) {
+        const { data: samePhoneLeads } = await supabase
+          .from('leads')
+          .select('id')
+          .ilike('telefone', `%${cleanPhone}%`);
+        if (samePhoneLeads && samePhoneLeads.length > 0) {
+          leadIds = samePhoneLeads.map(l => l.id);
+        }
+      }
+
       const { data, error } = await supabase
         .from('lead_notes')
         .select('*')
-        .eq('lead_id', leadId)
+        .in('lead_id', leadIds)
         .order('created_at', { ascending: true });
+
       if (!error && data) {
         setChatMessages(data.filter(n => n.nota && (n.nota.startsWith('[WA:') || n.nota.startsWith('[WhatsApp]'))));
       }
@@ -400,22 +414,22 @@ export default function App({ session }) {
     }
   };
 
-  // Real-time polling para novas mensagens no Chat (3s)
+  // Real-time polling para novas mensagens no Chat (2s)
   useEffect(() => {
     let timer;
     if (currentView === 'whatsapp' && waSubTab === 'chat') {
-      const activeId = selectedChatLead?.id || (columns.flatMap(c => c.cards || [])[0]?.id);
-      if (activeId) {
-        fetchChatMessages(activeId);
+      const activeLead = selectedChatLead || (columns.flatMap(c => c.cards || [])[0]);
+      if (activeLead) {
+        fetchChatMessages(activeLead);
         timer = setInterval(() => {
-          fetchChatMessages(activeId);
-        }, 3000);
+          fetchChatMessages(activeLead);
+        }, 2000);
       }
     }
     return () => {
       if (timer) clearInterval(timer);
     };
-  }, [currentView, waSubTab, selectedChatLead?.id, columns]);
+  }, [currentView, waSubTab, selectedChatLead, columns]);
 
   // Captação B2B Google Maps & CNPJ
   const [b2bTab, setB2bTab] = useState('gmaps');
@@ -4308,7 +4322,7 @@ export default function App({ session }) {
                               throw new Error(errData.error || `Erro ${res.status}`);
                             }
 
-                            fetchChatMessages(activeLead.id);
+                            fetchChatMessages(activeLead);
                           } catch (err) {
                             alert('Erro ao enviar mensagem: ' + err.message);
                           } finally {
