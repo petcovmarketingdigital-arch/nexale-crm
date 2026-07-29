@@ -383,6 +383,13 @@ export default function App({ session }) {
   const [chatInputText, setChatInputText] = useState('');
   const [isSendingChatMessage, setIsSendingChatMessage] = useState(false);
   const [chatSearchQuery, setChatSearchQuery] = useState('');
+  const chatBottomRef = useRef(null);
+
+  useEffect(() => {
+    if (chatBottomRef.current) {
+      chatBottomRef.current.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [chatMessages]);
 
   const fetchChatMessages = async (lead) => {
     if (!lead) return;
@@ -4224,11 +4231,11 @@ export default function App({ session }) {
                 </div>
 
                 {/* Coluna Central: Janela do Chat (8 cols) */}
-                <div className="lg:col-span-8 flex flex-col h-full bg-slate-100/40">
+                <div className="lg:col-span-8 flex flex-col h-full bg-slate-100/40 min-h-0">
                   {activeLead ? (
                     <>
                       {/* Header da Conversa Ativa */}
-                      <div className="p-3.5 bg-white border-b border-slate-100 flex items-center justify-between">
+                      <div className="p-3.5 bg-white border-b border-slate-100 flex items-center justify-between shrink-0">
                         <div className="flex items-center gap-3">
                           <div className="w-9 h-9 rounded-full bg-emerald-600 text-white font-bold text-xs flex items-center justify-center shadow-xs">
                             {(activeLead.contato || activeLead.empresa || 'C').charAt(0).toUpperCase()}
@@ -4247,34 +4254,37 @@ export default function App({ session }) {
                       </div>
 
                       {/* Stream de Mensagens */}
-                      <div className="flex-1 p-4 overflow-y-auto space-y-3 minimal-scrollbar bg-[#efeae2]/30">
+                      <div className="flex-1 p-4 overflow-y-auto space-y-3 minimal-scrollbar bg-[#efeae2]/30 min-h-0">
                         {chatMessages.length === 0 ? (
                           <div className="flex flex-col items-center justify-center h-full text-slate-400 text-center py-12">
                             <p className="text-sm font-bold text-slate-600 mb-1">Nenhuma mensagem recente gravada ainda</p>
                             <p className="text-xs">Digite uma mensagem abaixo para iniciar o atendimento no WhatsApp!</p>
                           </div>
                         ) : (
-                          chatMessages.map(msg => {
-                            const isOut = msg.nota && (msg.nota.startsWith('[WA:out]') || msg.nota.startsWith('Atendente'));
-                            const cleanText = msg.nota ? msg.nota.replace(/^(\[WA:(in|out)\]|Cliente:|Atendente(\s*\(IA\))?:)\s*/, '') : '';
-                            return (
-                              <div key={msg.id} className={`flex ${isOut ? 'justify-end' : 'justify-start'}`}>
-                                <div className={`max-w-[75%] rounded-2xl px-4 py-2.5 shadow-xs text-xs font-medium ${
-                                  isOut ? 'bg-emerald-600 text-white rounded-br-none' : 'bg-white text-slate-800 rounded-bl-none border border-slate-200/60'
-                                }`}>
-                                  <p className="whitespace-pre-wrap leading-relaxed">{cleanText}</p>
-                                  <span className={`text-[9px] block text-right mt-1 ${isOut ? 'text-emerald-100' : 'text-slate-400'}`}>
-                                    {new Date(msg.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
-                                  </span>
+                          <>
+                            {chatMessages.map(msg => {
+                              const isOut = msg.nota && (msg.nota.startsWith('[WA:out]') || msg.nota.startsWith('Atendente'));
+                              const cleanText = msg.nota ? msg.nota.replace(/^(\[WA:(in|out)\]|Cliente:|Atendente(\s*\(IA\))?:)\s*/, '') : '';
+                              return (
+                                <div key={msg.id} className={`flex ${isOut ? 'justify-end' : 'justify-start'}`}>
+                                  <div className={`max-w-[75%] rounded-2xl px-4 py-2.5 shadow-xs text-xs font-medium ${
+                                    isOut ? 'bg-emerald-600 text-white rounded-br-none' : 'bg-white text-slate-800 rounded-bl-none border border-slate-200/60'
+                                  }`}>
+                                    <p className="whitespace-pre-wrap leading-relaxed">{cleanText}</p>
+                                    <span className={`text-[9px] block text-right mt-1 ${isOut ? 'text-emerald-100' : 'text-slate-400'}`}>
+                                      {new Date(msg.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                                    </span>
+                                  </div>
                                 </div>
-                              </div>
-                            );
-                          })
+                              );
+                            })}
+                            <div ref={chatBottomRef} />
+                          </>
                         )}
                       </div>
 
                       {/* Chips de Resposta Rápida */}
-                      <div className="px-3 py-1.5 bg-white border-t border-slate-100 flex gap-1.5 overflow-x-auto minimal-scrollbar">
+                      <div className="px-3 py-1.5 bg-white border-t border-slate-100 flex gap-1.5 overflow-x-auto minimal-scrollbar shrink-0">
                         {['Olá, como posso ajudar?', 'Segue nosso orçamento', 'Qual é a sua cidade?', 'Podemos agendar uma ligação?'].map((tmpl, idx) => (
                           <button
                             key={idx}
