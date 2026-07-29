@@ -1,4 +1,28 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+
+// =============================================================
+// Abre o WhatsApp Web sempre na MESMA aba — solução definitiva
+// Usamos /wa-redirect.html (mesmo domínio) para garantir que a
+// navegação cross-origin nunca seja bloqueada pelo Chrome.
+// O WhatsApp Web reseta window.name, então não podemos depender
+// de named windows. Dependemos APENAS da referência _waWindow.
+// =============================================================
+let _waWindow = null;
+const openWhatsAppWeb = (phone, text) => {
+  // URL do proxy no mesmo domínio (Vercel) → redireciona para WhatsApp Web
+  const proxyUrl = `/wa-redirect.html?phone=${phone}&text=${encodeURIComponent(text)}`;
+
+  if (_waWindow && !_waWindow.closed) {
+    // Janela já aberta: navega para o proxy do MESMO domínio (sempre permitido)
+    _waWindow.location.href = proxyUrl;
+    _waWindow.focus();
+    return;
+  }
+  // Primeira vez ou janela fechada: abre nova
+  _waWindow = window.open(proxyUrl, 'nexale_wa');
+  if (_waWindow) _waWindow.focus();
+};
+
 import { supabase } from './supabaseClient';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, PieChart, Pie, Cell, Legend } from 'recharts';
 import { useRegisterSW } from 'virtual:pwa-register/react';
@@ -344,12 +368,170 @@ export default function App({ session }) {
   const [selectedOrigem, setSelectedOrigem] = useState('all');
   const [allCompanies, setAllCompanies] = useState([]);
 
-  // Modal de Reatribuição em Massa de Carteira
   const [showReassignModal, setShowReassignModal] = useState(false);
   const [reassignFromUserId, setReassignFromUserId] = useState('');
   const [reassignToUserId, setReassignToUserId] = useState('');
   const [deleteFromUserAccount, setDeleteFromUserAccount] = useState(false);
   const [isReassigning, setIsReassigning] = useState(false);
+  // Painel WhatsApp lateral
+  const [waPanel, setWaPanel] = useState(null); // null | { nome, empresa, phone, text }
+
+  // Live Chat Inbox WhatsApp
+  const [waSubTab, setWaSubTab] = useState('chat');
+  const [selectedChatLead, setSelectedChatLead] = useState(null);
+  const [chatMessages, setChatMessages] = useState([]);
+  const [chatInputText, setChatInputText] = useState('');
+  const [isSendingChatMessage, setIsSendingChatMessage] = useState(false);
+  const [chatSearchQuery, setChatSearchQuery] = useState('');
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const [isUploadingMedia, setIsUploadingMedia] = useState(false);
+  const chatFileInputRef = useRef(null);
+  const chatBottomRef = useRef(null);
+  const prevMsgCountRef = useRef(0);
+
+  const handleChatFileChange = async (e) => {
+    const file = e.target.files?.[0];
+    const activeLead = selectedChatLead || (columns.flatMap(c => c.cards || [])[0]);
+    if (!file || !activeLead) return;
+
+    setIsUploadingMedia(true);
+    try {
+      const activeInst = userRole === 'superadmin' ? 'superadmin' : companyId;
+      const reader = new FileReader();
+
+      reader.onload = async () => {
+        const base64Data = reader.result;
+        let mediaType = 'document';
+        if (file.type.startsWith('image/')) mediaType = 'image';
+        else if (file.type.startsWith('video/')) mediaType = 'video';
+        else if (file.type.startsWith('audio/')) mediaType = 'audio';
+
+        let res = await fetch('/api/send-chat-media', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            leadId: activeLead.id,
+            companyId: activeInst,
+            phone: activeLead.telefone,
+            mediaType,
+            mimeType: file.type || 'application/octet-stream',
+            base64Data,
+            fileName: file.name,
+            caption: chatInputText || ''
+          })
+        });
+
+        if (!res.ok) {
+          res = await fetch('https://app.nexalecrm.com.br/api/send-chat-media', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              leadId: activeLead.id,
+              companyId: activeInst,
+              phone: activeLead.telefone,
+              mediaType,
+              mimeType: file.type || 'application/octet-stream',
+              base64Data,
+              fileName: file.name,
+              caption: chatInputText || ''
+            })
+          });
+        }
+
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}));
+          throw new Error(errData.error || `Erro ${res.status}`);
+        }
+
+        setChatInputText('');
+        fetchChatMessages(activeLead);
+      };
+
+      reader.readAsDataURL(file);
+    } catch (err) {
+      alert('Erro ao enviar arquivo: ' + err.message);
+    } finally {
+      setIsUploadingMedia(false);
+      if (chatFileInputRef.current) chatFileInputRef.current.value = '';
+    }
+  };
+
+  useEffect(() => {
+    if (chatMessages.length > prevMsgCountRef.current) {
+      if (chatBottomRef.current) {
+        chatBottomRef.current.scrollIntoView({ behavior: 'smooth' });
+      }
+    }
+    prevMsgCountRef.current = chatMessages.length;
+  }, [chatMessages]);
+
+  useEffect(() => {
+    prevMsgCountRef.current = 0;
+    if (chatBottomRef.current) {
+      chatBottomRef.current.scrollIntoView({ behavior: 'auto' });
+    }
+  }, [selectedChatLead]);
+
+  const fetchChatMessages = async (lead) => {
+    if (!lead) return;
+    try {
+      const cleanPhone = lead.telefone ? lead.telefone.replace(/\D/g, '').slice(-8) : '';
+      let leadIds = [lead.id];
+
+      if (cleanPhone) {
+        const { data: samePhoneLeads } = await supabase
+          .from('leads')
+          .select('id')
+          .ilike('telefone', `%${cleanPhone}%`);
+        if (samePhoneLeads && samePhoneLeads.length > 0) {
+          leadIds = samePhoneLeads.map(l => l.id);
+        }
+      }
+
+      const { data, error } = await supabase
+        .from('lead_notes')
+        .select('*')
+        .in('lead_id', leadIds)
+        .order('created_at', { ascending: true });
+
+      if (!error && data) {
+        setChatMessages(data.filter(n => n.nota && (
+          n.nota.startsWith('[WA:') ||
+          n.nota.startsWith('[WhatsApp]') ||
+          n.nota.startsWith('Cliente:') ||
+          n.nota.startsWith('Atendente')
+        )));
+      }
+    } catch (e) {
+      console.warn('Erro ao buscar mensagens do chat:', e.message);
+    }
+  };
+
+  // Real-time polling para novas mensagens no Chat (2s)
+  useEffect(() => {
+    let timer;
+    if (currentView === 'whatsapp' && waSubTab === 'chat') {
+      const activeLead = selectedChatLead || (columns.flatMap(c => c.cards || [])[0]);
+      if (activeLead) {
+        fetchChatMessages(activeLead);
+        timer = setInterval(() => {
+          fetchChatMessages(activeLead);
+        }, 2000);
+      }
+    }
+    return () => {
+      if (timer) clearInterval(timer);
+    };
+  }, [currentView, waSubTab, selectedChatLead, columns]);
+
+  // Captação B2B Google Maps & CNPJ
+  const [b2bTab, setB2bTab] = useState('gmaps');
+  const [gmapsKeyword, setGmapsKeyword] = useState('');
+  const [gmapsLocation, setGmapsLocation] = useState('');
+  const [gmapsPasteText, setGmapsPasteText] = useState('');
+  const [gmapsResults, setGmapsResults] = useState([]);
+  const [gmapsSelectedIds, setGmapsSelectedIds] = useState([]);
+  const [isSearchingGMaps, setIsSearchingGMaps] = useState(false);
 
   const [leadNotes, setLeadNotes] = useState([]);
   const [newNote, setNewNote] = useState('');
@@ -641,61 +823,65 @@ export default function App({ session }) {
   }, [companyId, userRole, selectedSeller, customTitles]);
 
   const initApp = async () => {
-    setLoadingDb(true);
-    
-    // 1. Pega o perfil e a empresa do usuário logado
-    const { data: roleData } = await supabase.from('user_roles').select('*').eq('id', session.user.id).single();
-    
-    let role = roleData ? roleData.role : 'vendedor';
-    if (session.user.email === 'petcov@live.com' || session.user.email === 'contato@nexalecrm.com.br') {
-      role = 'superadmin';
-    }
-    const compId = roleData ? roleData.company_id : null;
-    
-    setUserRole(role);
-    setCompanyId(compId);
+    try {
+      setLoadingDb(true);
+      
+      // 1. Pega o perfil e a empresa do usuário logado
+      const { data: roleData } = await supabase.from('user_roles').select('*').eq('id', session.user.id).single();
+      
+      let role = roleData ? roleData.role : 'vendedor';
+      if (session?.user?.email === 'petcov@live.com' || session?.user?.email === 'contato@nexalecrm.com.br') {
+        role = 'superadmin';
+      }
+      const compId = roleData ? roleData.company_id : null;
+      
+      setUserRole(role);
+      setCompanyId(compId);
 
-    if (role === 'superadmin') {
-      setCurrentView('superadmin');
-      // Carrega lista de empresas para o seletor do superadmin e campanhas
-      const { data: companiesData } = await supabase.from('companies').select('id, name, phone, subscription_status, sa_stage, sa_temperatura, sa_valor').order('name', { ascending: true });
-      if (companiesData) {
-        setAllCompanies(companiesData);
-        if (companiesData.length > 0) {
-          setSelectedConfigCompanyId(companiesData[0].id);
+      if (role === 'superadmin') {
+        setCurrentView('superadmin');
+        // Carrega lista de empresas para o seletor do superadmin e campanhas
+        const { data: companiesData } = await supabase.from('companies').select('id, name, phone, subscription_status, sa_stage, sa_temperatura, sa_valor').order('name', { ascending: true });
+        if (companiesData) {
+          setAllCompanies(companiesData);
+          if (companiesData.length > 0) {
+            setSelectedConfigCompanyId(companiesData[0].id);
+          }
         }
-      }
-    } else {
-       setSelectedConfigCompanyId(compId);
-    }
-
-    let loadedCustomTitles = {};
-    if (session?.user?.user_metadata?.custom_kanban_titles) {
-      loadedCustomTitles = session.user.user_metadata.custom_kanban_titles;
-      setCustomTitles(loadedCustomTitles);
-    }
-
-    if (compId) {
-      const { data: compData } = await supabase.from('companies').select('invite_code, subscription_status, trial_ends_at, phone, nicho, logo_url, sla_first_touch_minutes, bolsao_max_minutes, max_rotations_before_manager').eq('id', compId).single();
-      if (compData) {
-        if (role === 'admin') setInviteCode(compData.invite_code);
-        setSubscriptionStatus(compData.subscription_status);
-        setTrialEndsAt(compData.trial_ends_at);
-        setCompanyPhone(compData.phone || '');
-        setCompanyNiche(compData.nicho || 'geral');
-        setCompanyLogoUrl(compData.logo_url || '');
-        setSlaMinutes(compData.sla_first_touch_minutes || 20);
-        setBolsaoMaxMinutes(compData.bolsao_max_minutes || 30);
-        setMaxRotations(compData.max_rotations_before_manager || 2);
+      } else {
+         setSelectedConfigCompanyId(compId);
       }
 
-      if (role === 'admin') {
-        const { data: teamData } = await supabase.from('user_roles').select('*').eq('company_id', compId);
-        if (teamData) setTeamMembers(teamData);
+      let loadedCustomTitles = {};
+      if (session?.user?.user_metadata?.custom_kanban_titles) {
+        loadedCustomTitles = session.user.user_metadata.custom_kanban_titles;
+        setCustomTitles(loadedCustomTitles);
       }
 
-      await fetchLeads(role, 'all', compId);
-    } else {
+      if (compId) {
+        const { data: compData } = await supabase.from('companies').select('invite_code, subscription_status, trial_ends_at, phone, nicho, logo_url, sla_first_touch_minutes, bolsao_max_minutes, max_rotations_before_manager').eq('id', compId).single();
+        if (compData) {
+          if (role === 'admin') setInviteCode(compData.invite_code);
+          setSubscriptionStatus(compData.subscription_status);
+          setTrialEndsAt(compData.trial_ends_at);
+          setCompanyPhone(compData.phone || '');
+          setCompanyNiche(compData.nicho || 'geral');
+          setCompanyLogoUrl(compData.logo_url || '');
+          setSlaMinutes(compData.sla_first_touch_minutes || 20);
+          setBolsaoMaxMinutes(compData.bolsao_max_minutes || 30);
+          setMaxRotations(compData.max_rotations_before_manager || 2);
+        }
+
+        if (role === 'admin') {
+          const { data: teamData } = await supabase.from('user_roles').select('*').eq('company_id', compId);
+          if (teamData) setTeamMembers(teamData);
+        }
+
+        await fetchLeads(role, 'all', compId);
+      }
+    } catch (err) {
+      console.error('Erro na inicialização da aplicação:', err);
+    } finally {
       setLoadingDb(false);
     }
   };
@@ -1787,11 +1973,246 @@ export default function App({ session }) {
       setReassignToUserId('');
       setDeleteFromUserAccount(false);
       fetchTeamMembers(activeId);
-      fetchLeads(activeId);
+      fetchLeads(userRole, selectedSeller, activeId);
     } catch (err) {
       alert('Erro na operação: ' + err.message);
     } finally {
       setIsReassigning(false);
+    }
+  };
+
+  const handleSearchGMaps = async () => {
+    if (!gmapsKeyword.trim() || !gmapsLocation.trim()) {
+      alert('Informe a palavra-chave/segmento e a cidade/localidade para pesquisar.');
+      return;
+    }
+
+    setIsSearchingGMaps(true);
+    setGmapsResults([]);
+    setGmapsSelectedIds([]);
+
+    try {
+      const keyword = gmapsKeyword.trim();
+      const location = gmapsLocation.trim();
+      const results = [];
+      const seen = new Set();
+
+      // 1. Tentar primeiro o nosso Servidor VPS dedicado (HTTPS com CORS)
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 35000);
+
+        const vpsRes = await fetch('https://app.nexalecrm.com.br/api/scrape-gmaps', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ keyword, location }),
+          signal: controller.signal
+        });
+        clearTimeout(timeoutId);
+
+        if (vpsRes.ok) {
+          const vpsData = await vpsRes.json();
+          if (vpsData.success && Array.isArray(vpsData.results)) {
+            vpsData.results.forEach(r => {
+              if (!seen.has(r.empresa.toLowerCase())) {
+                seen.add(r.empresa.toLowerCase());
+                results.push(r);
+              }
+            });
+          }
+        }
+      } catch (e) {
+        console.warn('Erro ao consultar VPS B2B, usando busca local...', e);
+      }
+
+      // 2. Fallback local seguro (2 requisições sequenciais para não estourar o limite 429)
+      if (results.length === 0) {
+        let kwClean = keyword;
+        if (kwClean.toLowerCase().endsWith('s') && !kwClean.toLowerCase().endsWith('is')) {
+          kwClean = kwClean.slice(0, -1);
+        }
+
+        const safeQueries = [
+          `${kwClean} ${location}`,
+          `${location} ${kwClean}`
+        ];
+
+        for (const q of safeQueries) {
+          try {
+            const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(q)}&countrycodes=br&addressdetails=1&extratags=1&limit=50`;
+            const resNom = await fetch(url, { 
+              headers: { 
+                'User-Agent': 'NexaleCRM-B2B-Client/2.5 (contact@nexalecrm.com.br)',
+                'Accept': 'application/json, text/plain, */*'
+              } 
+            });
+
+            if (resNom.ok) {
+              const data = await resNom.json();
+              (data || []).forEach(item => {
+                const tags = item.extratags || {};
+                const addr = item.address || {};
+                const name = item.name || (item.display_name ? item.display_name.split(',')[0] : '');
+                const phone = tags.phone || tags['contact:phone'] || tags['contact:mobile'] || tags['mobile'] || '';
+
+                let cleanPhone = phone ? phone.split(';')[0].replace(/\D/g, '') : '';
+                if (cleanPhone && (cleanPhone.length === 10 || cleanPhone.length === 11)) {
+                  cleanPhone = '55' + cleanPhone;
+                }
+
+                const street = addr.road ? `${addr.road} ${addr.house_number || ''}` : '';
+                const city = addr.city || addr.town || addr.municipality || location;
+
+                if (name && !seen.has(name.toLowerCase())) {
+                  seen.add(name.toLowerCase());
+                  results.push({
+                    id: `gmaps-${item.place_id}`,
+                    empresa: name,
+                    contato: name,
+                    telefone: cleanPhone,
+                    telefoneRaw: phone || 'Não informado',
+                    endereco: street ? `${street}, ${city}` : (item.display_name || location),
+                    categoria: item.type || item.class || keyword,
+                    website: tags.website || tags['contact:website'] || '',
+                    origem: 'Google Maps / Places B2B'
+                  });
+                }
+              });
+            }
+          } catch (e) {
+            console.warn(`[GMaps Scraper] Error in query "${q}":`, e.message);
+          }
+        }
+      }
+
+      setGmapsResults(results);
+      setGmapsSelectedIds(results.map(r => r.id));
+
+      if (results.length === 0) {
+        alert(`Nenhum estabelecimento encontrado para "${keyword}" em "${location}". Tente utilizar a Aba 2 ("Copiar & Colar do Google Maps") para importar diretamente todas as empresas do Google Maps!`);
+      }
+    } catch (err) {
+      console.error('Erro na captação B2B Google Maps:', err);
+      alert('Erro na captação B2B: ' + err.message);
+    } finally {
+      setIsSearchingGMaps(false);
+    }
+  };
+
+  const handleParseGMapsText = () => {
+    if (!gmapsPasteText.trim()) {
+      alert('Cole o texto da página ou lista de resultados do Google Maps na caixa.');
+      return;
+    }
+
+    const lines = gmapsPasteText.split('\n').map(l => l.trim()).filter(Boolean);
+    const parsedResults = [];
+    const seen = new Set();
+
+    let currentLead = null;
+
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+
+      const phoneMatch = line.match(/(?:\+?55\s?)?(?:\(?([1-9]{2})\)?\s?)?(?:9\d{4}|\d{4})[-\s]?\d{4}/);
+      const isRating = line.match(/\d,\d\s*\(\d+\)/) || line.includes('Nenhuma avaliação') || line.includes('avaliação');
+      const isHours = line.includes('Aberto') || line.includes('Fechado') || line.includes('Fecha ');
+
+      if (phoneMatch && currentLead) {
+        let clean = phoneMatch[0].replace(/\D/g, '');
+        if (clean.length === 10 || clean.length === 11) clean = '55' + clean;
+        currentLead.telefone = clean;
+        currentLead.telefoneRaw = phoneMatch[0];
+      } else if (isRating && currentLead) {
+        currentLead.rating = line;
+      } else if (isHours) {
+        // ignora
+      } else if (line.length >= 3 && line.length < 90 && !isRating && !phoneMatch) {
+        if (currentLead && !currentLead.endereco && (line.includes('Av.') || line.includes('Rua') || line.includes('Alameda') || line.includes('Academia') || line.includes('Gravataí') || line.includes('·'))) {
+          currentLead.endereco = line;
+        } else if (!line.includes('Resultados') && !line.includes('Compartilhar') && !line.includes('Filtros') && !line.includes('Classificação') && !line.includes('Horas')) {
+          if (currentLead && currentLead.empresa && !seen.has(currentLead.empresa.toLowerCase())) {
+            seen.add(currentLead.empresa.toLowerCase());
+            parsedResults.push(currentLead);
+          }
+          currentLead = {
+            id: `gmaps-parse-${parsedResults.length + 1}`,
+            empresa: line,
+            contato: line,
+            telefone: '',
+            telefoneRaw: 'Não informado',
+            endereco: '',
+            categoria: 'Google Maps Place',
+            origem: 'Google Maps B2B'
+          };
+        }
+      }
+    }
+
+    if (currentLead && currentLead.empresa && !seen.has(currentLead.empresa.toLowerCase())) {
+      seen.add(currentLead.empresa.toLowerCase());
+      parsedResults.push(currentLead);
+    }
+
+    if (parsedResults.length === 0) {
+      alert('Não foi possível identificar estabelecimentos no texto colado. Certifique-se de copiar os resultados diretamente da tela do Google Maps.');
+      return;
+    }
+
+    setGmapsResults(parsedResults);
+    setGmapsSelectedIds(parsedResults.map(r => r.id));
+    setB2bTab('gmaps');
+    alert(`🎉 ${parsedResults.length} empresas do Google Maps foram extraídas com sucesso!`);
+  };
+
+  const handleImportGMapsLeads = async (destination = 'kanban') => {
+    const selectedLeads = gmapsResults.filter(r => gmapsSelectedIds.includes(r.id));
+    if (selectedLeads.length === 0) {
+      alert('Selecione ao menos uma empresa para importar.');
+      return;
+    }
+
+    const activeCompId = userRole === 'superadmin' ? selectedConfigCompanyId : companyId;
+    if (!activeCompId) return;
+
+    if (destination === 'campanha') {
+      const lines = selectedLeads.map(l => `${l.telefone || ''}|${l.empresa}`).join('\n');
+      setCampExternalList(prev => (prev ? prev + '\n' + lines : lines));
+      setCampTab('externa');
+      setCurrentView('campanha');
+      setShowScraperModal(false);
+      alert(`🎉 ${selectedLeads.length} empresas importadas diretamente para a sua Fila de Disparo em Campanhas!`);
+      return;
+    }
+
+    try {
+      const nowIso = new Date().toISOString();
+      const leadsToInsert = selectedLeads.map(l => ({
+        company_id: activeCompId,
+        user_id: session.user.id,
+        empresa: l.empresa,
+        contato: l.contato,
+        telefone: l.telefone || 'Não informado',
+        origem: 'Google Maps B2B',
+        coluna: 'leads',
+        temperatura: 'Morno',
+        observacao: `Endereço: ${l.endereco || 'Não informado'} | Categoria: ${l.categoria || ''} | Site: ${l.website || ''}`,
+        dados_nicho: {
+          website: l.website,
+          categoria: l.categoria,
+          endereco: l.endereco
+        },
+        data_criacao: nowIso
+      }));
+
+      const { error } = await supabase.from('leads').insert(leadsToInsert);
+      if (error) throw error;
+
+      alert(`🚀 Sucesso! ${selectedLeads.length} empresas do Google Maps foram salvas diretamente na coluna de Entrada do seu Kanban!`);
+      setShowScraperModal(false);
+      fetchLeads(userRole, selectedSeller, activeCompId);
+    } catch (err) {
+      alert('Erro ao importar leads para o Kanban: ' + err.message);
     }
   };
 
@@ -2858,20 +3279,21 @@ export default function App({ session }) {
                             <p className="flex items-center gap-1"><span className="opacity-70">👤</span> {card.contato}</p>
                             <div className="flex items-center gap-1">
                               <span className="opacity-70">📞</span> {card.telefone}
-                              {card.telefone && card.telefone !== 'Não informado' && (
-                                <a 
-                                  href={`https://wa.me/${card.telefone.replace(/\D/g, '').length <= 11 ? '55' : ''}${card.telefone.replace(/\D/g, '')}?text=${encodeURIComponent(`Olá ${card.contato !== 'Sócio/Responsável' ? card.contato.split(' ')[0] : ''}, tudo bem?`)}`}
-                                  target="_blank" 
-                                  rel="noreferrer"
-                                  className="mt-2 w-full bg-green-50 hover:bg-green-100 text-green-700 border border-green-200 text-xs font-bold py-1.5 px-3 rounded-lg transition-colors flex items-center justify-center gap-2"
-                                  title="Iniciar conversa no WhatsApp"
-                                >
-                                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="currentColor" viewBox="0 0 16 16"><path d="M13.601 2.326A7.85 7.85 0 0 0 7.994 0C3.627 0 .068 3.558.064 7.926c0 1.399.366 2.76 1.057 3.965L0 16l4.204-1.102a7.9 7.9 0 0 0 3.79.965h.004c4.368 0 7.926-3.558 7.93-7.93A7.9 7.9 0 0 0 13.6 2.326zM7.994 14.521a6.6 6.6 0 0 1-3.356-.92l-.24-.144-2.494.654.666-2.433-.156-.251a6.56 6.56 0 0 1-1.007-3.505c0-3.626 2.957-6.584 6.591-6.584a6.56 6.56 0 0 1 4.66 1.931 6.56 6.56 0 0 1 1.928 4.66c-.004 3.639-2.961 6.592-6.592 6.592m3.615-4.934c-.197-.099-1.17-.578-1.353-.646-.182-.065-.315-.099-.445.099-.133.197-.513.646-.627.775-.114.133-.232.148-.43.05-.197-.1-.836-.308-1.592-.985-.59-.525-.985-1.175-1.103-1.372-.114-.198-.011-.304.088-.403.087-.088.197-.232.296-.346.1-.114.133-.198.198-.33.065-.134.034-.248-.015-.347-.05-.099-.445-1.076-.612-1.47-.16-.389-.323-.335-.445-.34-.114-.007-.247-.007-.38-.007a.73.73 0 0 0-.529.247c-.182.198-.691.677-.691 1.654s.71 1.916.81 2.049c.098.133 1.394 2.132 3.383 2.992.47.205.84.326 1.129.418.475.152.904.129 1.246.08.38-.058 1.171-.48 1.338-.943.164-.464.164-.86.114-.943-.049-.084-.182-.133-.38-.232"/></svg>
-                                  Falar no WhatsApp
-                                </a>
-                              )}
                             </div>
-                            {card.email && <p className="flex items-center gap-1"><span className="opacity-70">✉️</span> {card.email.toLowerCase()}</p>}
+                            {card.telefone && card.telefone !== 'Não informado' && (
+                              <button
+                                onClick={() => {
+                                  setSelectedChatLead(card);
+                                  setWaSubTab('chat');
+                                  setCurrentView('whatsapp');
+                                }}
+                                className="mt-2 w-full bg-green-50 hover:bg-green-100 text-green-700 border border-green-200 text-xs font-bold py-1.5 px-3 rounded-lg transition-all flex items-center justify-center gap-2 cursor-pointer"
+                              >
+                                <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" fill="currentColor" viewBox="0 0 16 16"><path d="M13.601 2.326A7.85 7.85 0 0 0 7.994 0C3.627 0 .068 3.558.064 7.926c0 1.399.366 2.76 1.057 3.965L0 16l4.204-1.102a7.9 7.9 0 0 0 3.79.965h.004c4.368 0 7.926-3.558 7.93-7.93A7.9 7.9 0 0 0 13.6 2.326zM7.994 14.521a6.6 6.6 0 0 1-3.356-.92l-.24-.144-2.494.654.666-2.433-.156-.251a6.56 6.56 0 0 1-1.007-3.505c0-3.626 2.957-6.584 6.591-6.584a6.56 6.56 0 0 1 4.66 1.931 6.56 6.56 0 0 1 1.928 4.66c-.004 3.639-2.961 6.592-6.592 6.592m3.615-4.934c-.197-.099-1.17-.578-1.353-.646-.182-.065-.315-.099-.445.099-.133.197-.513.646-.627.775-.114.133-.232.148-.43.05-.197-.1-.836-.308-1.592-.985-.59-.525-.985-1.175-1.103-1.372-.114-.198-.011-.304.088-.403.087-.088.197-.232.296-.346.1-.114.133-.198.198-.33.065-.134.034-.248-.015-.347-.05-.099-.445-1.076-.612-1.47-.16-.389-.323-.335-.445-.34-.114-.007-.247-.007-.38-.007a.73.73 0 0 0-.529.247c-.182.198-.691.677-.691 1.654s.71 1.916.81 2.049c.098.133 1.394 2.132 3.383 2.992.47.205.84.326 1.129.418.475.152.904.129 1.246.08.38-.058 1.171-.48 1.338-.943.164-.464.164-.86.114-.943-.049-.084-.182-.133-.38-.232"/></svg>
+                                Falar no WhatsApp
+                              </button>
+                            )}
+                            {card.email && <p className="flex items-center gap-1 mt-1"><span className="opacity-70">✉️</span> {card.email.toLowerCase()}</p>}
                           </div>
                           
                           {card.dataRetorno && (
@@ -3799,104 +4221,379 @@ export default function App({ session }) {
 
       {currentView === 'superadmin' && <SuperAdminPanel />}
 
-      {currentView === 'whatsapp' && (
-        <div className="max-w-2xl mx-auto space-y-6 mt-8 animate-fade-in">
-          <div className="bg-white p-8 rounded-xl shadow-sm shadow-indigo-900/5 border border-slate-100 text-center">
-            <div className="w-16 h-16 bg-green-100 rounded-2xl mx-auto mb-4 flex items-center justify-center">
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" /></svg>
+      {currentView === 'whatsapp' && (() => {
+        const allCards = columns.flatMap(col => col.cards || []);
+        const activeLead = selectedChatLead || (allCards.length > 0 ? allCards[0] : null);
+
+        return (
+          <div className="max-w-7xl mx-auto mt-4 space-y-4 animate-fade-in px-2">
+            {/* Top Navigation for WhatsApp Sub-tabs */}
+            <div className="flex items-center justify-between bg-white p-3 rounded-2xl shadow-sm border border-slate-100">
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setWaSubTab('chat')}
+                  className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
+                    waSubTab === 'chat'
+                      ? 'bg-emerald-600 text-white shadow-md shadow-emerald-600/20 font-black'
+                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                  }`}
+                >
+                  <span>💬 Central de Conversas (Live Chat)</span>
+                </button>
+                <button
+                  onClick={() => setWaSubTab('connection')}
+                  className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
+                    waSubTab === 'connection'
+                      ? 'bg-emerald-600 text-white shadow-md shadow-emerald-600/20 font-black'
+                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                  }`}
+                >
+                  <span>🔌 Status / QR Code Conexão</span>
+                  {waConnected && <span className="w-2 h-2 rounded-full bg-green-400 animate-pulse"></span>}
+                </button>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <span className={`text-xs font-bold px-3 py-1 rounded-full ${waConnected ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}`}>
+                  {waConnected ? '🟢 WhatsApp Conectado' : '🟠 Aguardando Conexão'}
+                </span>
+              </div>
             </div>
-            <h2 className="text-2xl font-black text-slate-800 mb-2">Conecte o seu WhatsApp</h2>
-            <p className="text-slate-500 mb-8 max-w-md mx-auto">Para que a Nexale envie mensagens automaticamente para seus leads, você precisa conectar o número da sua empresa.</p>
-            
-            <div className="border-2 border-dashed border-slate-200 rounded-xl p-8 bg-slate-50 relative overflow-hidden">
-              <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-green-400 to-emerald-500"></div>
-              
-              {waConnected ? (
-                <div className="flex flex-col items-center py-8">
-                  <div className="w-24 h-24 bg-green-100 rounded-full flex items-center justify-center mb-6 shadow-inner">
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-12 w-12 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                    </svg>
+
+            {/* Sub-tab 1: Central de Conversas (Live Chat) */}
+            {waSubTab === 'chat' && (
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 h-[720px] bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+                {/* Coluna Esquerda: Lista de Conversas / Leads (4 cols) */}
+                <div className="lg:col-span-4 border-r border-slate-100 flex flex-col h-full bg-slate-50/50">
+                  <div className="p-3 border-b border-slate-100 bg-white">
+                    <input
+                      type="text"
+                      placeholder="🔍 Buscar conversa ou telefone..."
+                      value={chatSearchQuery}
+                      onChange={e => setChatSearchQuery(e.target.value)}
+                      className="w-full bg-slate-100 border border-slate-200 rounded-xl px-3 py-2 text-xs outline-none focus:border-emerald-500 font-medium"
+                    />
                   </div>
-                  <h3 className="text-2xl font-bold text-slate-800 mb-2">Conectado com Sucesso!</h3>
-                  <p className="text-slate-500 mb-2 font-medium">Sua conta ({waUser}) está vinculada à Nexale.</p>
-                  <p className="text-sm text-slate-400 mb-8">As mensagens automáticas serão disparadas quando você mover cards no Kanban.</p>
 
-                  <button 
-                    onClick={() => setCurrentView('campanha')}
-                    className="bg-orange-500 hover:bg-orange-600 text-slate-900 font-bold py-4 px-8 rounded-xl transition-all shadow-lg shadow-orange-500/30 transform hover:-translate-y-0.5 w-full max-w-sm flex items-center justify-center gap-3 text-lg mb-3"
-                  >
-                    <span>🚀 Ir para Campanhas</span>
-                  </button>
-
-                  <button 
-                    onClick={() => setCurrentView('kanban')}
-                    className="bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold py-3 px-8 rounded-xl transition-all w-full max-w-sm flex items-center justify-center gap-2 text-sm"
-                  >
-                    📋 Voltar ao Kanban
-                  </button>
-
-                  <button 
-                    onClick={async () => {
-                      if (window.confirm('Tem certeza que deseja desconectar o seu WhatsApp? Você terá que ler o QR Code novamente.')) {
-                        try {
-                          const activeInstance = userRole === 'superadmin' ? 'superadmin' : companyId;
-                          await fetch(`/evolution/instance/logout/${activeInstance}`, {
-                            method: 'DELETE',
-                            headers: { 'apikey': '123' }
-                          });
-                        } catch(e) {
-                          console.warn('Erro ao desconectar no servidor:', e);
-                        }
-                        setIsWahaConnected(false);
-                        setWaConnected(false);
-                        setWaUser('');
-                        handleGenerateQR();
-                      }
-                    }}
-                    className="mt-6 text-xs font-bold text-red-500 hover:text-red-700 transition-colors underline"
-                  >
-                    Desconectar WhatsApp
-                  </button>
+                  <div className="flex-1 overflow-y-auto divide-y divide-slate-100 minimal-scrollbar">
+                    {allCards
+                      .filter(card => {
+                        if (!chatSearchQuery) return true;
+                        const q = chatSearchQuery.toLowerCase();
+                        return (card.empresa && card.empresa.toLowerCase().includes(q)) ||
+                               (card.contato && card.contato.toLowerCase().includes(q)) ||
+                               (card.telefone && card.telefone.includes(q));
+                      })
+                      .map(card => {
+                        const isSelected = activeLead && (
+                          activeLead.id === card.id ||
+                          (activeLead.telefone && card.telefone && activeLead.telefone.replace(/\D/g,'').slice(-8) === card.telefone.replace(/\D/g,'').slice(-8))
+                        );
+                        return (
+                          <div
+                            key={card.id}
+                            onClick={() => setSelectedChatLead(card)}
+                            className={`p-3.5 flex items-center gap-3 cursor-pointer transition-all ${
+                              isSelected ? 'bg-emerald-50/80 border-l-4 border-emerald-600' : 'hover:bg-slate-100/80'
+                            }`}
+                          >
+                            <div className="w-10 h-10 rounded-full bg-emerald-600 text-white font-bold text-sm flex items-center justify-center shrink-0 shadow-xs">
+                              {(card.contato || card.empresa || 'C').charAt(0).toUpperCase()}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center justify-between mb-0.5">
+                                <h4 className="font-bold text-slate-800 text-xs truncate">{card.empresa || card.contato}</h4>
+                              </div>
+                              <p className="text-[11px] text-slate-500 truncate font-medium">{card.contato} • {card.telefone}</p>
+                            </div>
+                          </div>
+                        );
+                      })}
+                  </div>
                 </div>
-              ) : (
-                <>
-                  <p className="text-sm font-bold text-slate-400 mb-6 uppercase tracking-wider">Passo a Passo</p>
-                  <ol className="text-left text-sm text-slate-600 mb-8 space-y-3 font-medium max-w-sm mx-auto">
-                    <li className="flex gap-3"><span className="bg-white border border-slate-200 rounded-full w-5 h-5 flex items-center justify-center text-xs font-bold shrink-0">1</span> Abra o WhatsApp no seu celular</li>
-                    <li className="flex gap-3"><span className="bg-white border border-slate-200 rounded-full w-5 h-5 flex items-center justify-center text-xs font-bold shrink-0">2</span> Toque em Mais opções (⋮) ou Configurações</li>
-                    <li className="flex gap-3"><span className="bg-white border border-slate-200 rounded-full w-5 h-5 flex items-center justify-center text-xs font-bold shrink-0">3</span> Toque em Dispositivos conectados e Conectar um dispositivo</li>
-                  </ol>
-                  
-                  {!qrCodeImage ? (
-                    <button 
-                      onClick={handleGenerateQR}
-                      disabled={isGeneratingQR}
-                      className="bg-green-500 hover:bg-green-600 text-slate-900 font-bold py-3 px-6 rounded-xl transition-all shadow-lg shadow-green-500/30 transform hover:-translate-y-0.5 w-full max-w-xs disabled:opacity-50"
-                    >
-                      {isGeneratingQR ? 'Gerando...' : 'Gerar QR Code de Conexão'}
-                    </button>
-                  ) : (
-                    <div className="flex flex-col items-center animate-fade-in">
-                      <div className="p-2 bg-white rounded-xl shadow-md shadow-indigo-900/10 border-4 border-white mb-4">
-                        <img src={qrCodeImage} alt="WhatsApp QR Code" className="w-64 h-64 object-contain" />
+
+                {/* Coluna Central: Janela do Chat (8 cols) */}
+                <div className="lg:col-span-8 flex flex-col h-full bg-slate-100/40 min-h-0">
+                  {activeLead ? (
+                    <>
+                      {/* Header da Conversa Ativa */}
+                      <div className="p-3.5 bg-white border-b border-slate-100 flex items-center justify-between shrink-0">
+                        <div className="flex items-center gap-3">
+                          <div className="w-9 h-9 rounded-full bg-emerald-600 text-white font-bold text-xs flex items-center justify-center shadow-xs">
+                            {(activeLead.contato || activeLead.empresa || 'C').charAt(0).toUpperCase()}
+                          </div>
+                          <div>
+                            <h3 className="font-bold text-slate-800 text-sm leading-tight">{activeLead.empresa}</h3>
+                            <p className="text-[11px] text-slate-500 font-semibold">{activeLead.contato} • {activeLead.telefone}</p>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                          <span className="text-[10px] font-extrabold px-2.5 py-1 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200">
+                            Etapa: {activeLead.coluna_id || 'Leads'}
+                          </span>
+                        </div>
                       </div>
-                      <p className="text-sm font-bold text-slate-600">Escaneie o código com seu WhatsApp para conectar.</p>
-                      <button 
-                        onClick={() => setQrCodeImage(null)} 
-                        className="mt-4 text-xs font-bold text-slate-400 hover:text-slate-600 transition-colors"
+
+                      {/* Stream de Mensagens */}
+                      <div className="flex-1 p-4 overflow-y-auto space-y-3 minimal-scrollbar bg-[#efeae2]/30 min-h-0">
+                        {chatMessages.length === 0 ? (
+                          <div className="flex flex-col items-center justify-center h-full text-slate-400 text-center py-12">
+                            <p className="text-sm font-bold text-slate-600 mb-1">Nenhuma mensagem recente gravada ainda</p>
+                            <p className="text-xs">Digite uma mensagem abaixo para iniciar o atendimento no WhatsApp!</p>
+                          </div>
+                        ) : (
+                          <>
+                            {chatMessages.map(msg => {
+                              const isOut = msg.nota && (msg.nota.startsWith('[WA:out]') || msg.nota.startsWith('Atendente'));
+                              const cleanText = msg.nota ? msg.nota.replace(/^(\[WA:(in|out)\]|Cliente:|Atendente(\s*\(IA\))?:)\s*/, '') : '';
+                              return (
+                                <div key={msg.id} className={`flex ${isOut ? 'justify-end' : 'justify-start'}`}>
+                                  <div className={`max-w-[75%] rounded-2xl px-4 py-2.5 shadow-xs text-xs font-medium ${
+                                    isOut ? 'bg-emerald-600 text-white rounded-br-none' : 'bg-white text-slate-800 rounded-bl-none border border-slate-200/60'
+                                  }`}>
+                                    <p className="whitespace-pre-wrap leading-relaxed">{cleanText}</p>
+                                    <span className={`text-[9px] block text-right mt-1 ${isOut ? 'text-emerald-100' : 'text-slate-400'}`}>
+                                      {new Date(msg.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                                    </span>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                            <div ref={chatBottomRef} />
+                          </>
+                        )}
+                      </div>
+
+                      {/* Chips de Resposta Rápida */}
+                      <div className="px-3 py-1.5 bg-white border-t border-slate-100 flex gap-1.5 overflow-x-auto minimal-scrollbar shrink-0">
+                        {['Olá, como posso ajudar?', 'Segue nosso orçamento', 'Qual é a sua cidade?', 'Podemos agendar uma ligação?'].map((tmpl, idx) => (
+                          <button
+                            key={idx}
+                            onClick={() => setChatInputText(tmpl)}
+                            className="text-[10px] font-bold bg-slate-100 hover:bg-emerald-50 hover:text-emerald-700 text-slate-600 px-2.5 py-1 rounded-full whitespace-nowrap transition-colors border border-slate-200 cursor-pointer"
+                          >
+                            + {tmpl}
+                          </button>
+                        ))}
+                      </div>
+
+                      {/* Input de Envio de Mensagem */}
+                      <form
+                        onSubmit={async (e) => {
+                          e.preventDefault();
+                          if (!chatInputText.trim() || isSendingChatMessage || isUploadingMedia) return;
+                          setIsSendingChatMessage(true);
+                          setShowEmojiPicker(false);
+                          const textToSend = chatInputText;
+                          setChatInputText('');
+
+                          try {
+                            const activeInst = userRole === 'superadmin' ? 'superadmin' : companyId;
+                            let res = await fetch('/api/send-chat-message', {
+                              method: 'POST',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({
+                                leadId: activeLead.id,
+                                companyId: activeInst,
+                                phone: activeLead.telefone,
+                                text: textToSend
+                              })
+                            });
+
+                            if (!res.ok) {
+                              res = await fetch('https://app.nexalecrm.com.br/api/send-chat-message', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                  leadId: activeLead.id,
+                                  companyId: activeInst,
+                                  phone: activeLead.telefone,
+                                  text: textToSend
+                                })
+                              });
+                            }
+
+                            if (!res.ok) {
+                              const errData = await res.json().catch(() => ({}));
+                              throw new Error(errData.error || `Erro ${res.status}`);
+                            }
+
+                            fetchChatMessages(activeLead);
+                          } catch (err) {
+                            alert('Erro ao enviar mensagem: ' + err.message);
+                          } finally {
+                            setIsSendingChatMessage(false);
+                          }
+                        }}
+                        className="p-3 bg-white border-t border-slate-100 flex gap-2 items-center relative"
                       >
-                        Gerar novo código
-                      </button>
+                        {/* Popover de Emojis */}
+                        {showEmojiPicker && (
+                          <div className="absolute bottom-16 left-3 bg-white border border-slate-200 rounded-2xl shadow-xl p-3 w-72 h-56 overflow-y-auto grid grid-cols-8 gap-1.5 z-50 text-base minimal-scrollbar">
+                            {['😀','😃','😄','😁','😆','😅','😂','🤣','😊','😇','🙂','🙃','😉','😌','😍','🥰','😘','😋','😛','😜','🤪','🤑','🤗','🤭','🤫','🤔','🤐','🤨','😐','😑','😏','😒','🙄','😬','🤥','😌','😔','😪','😴','😷','🤒','🤢','🤮','🤯','🤠','🥳','😎','🤓','🧐','😕','😟','😮','😲','😳','🥺','😦','😧','😨','😰','😥','😢','😭','😱','😖','😣','😞','😓','😩','😫','🥱','😤','😡','😠','💀','💩','🤡','👻','👽','🤖','👍','👎','👊','✊','👏','🙌','👐','🤝','✍️','🤳','💪','❤️','🧡','💛','💚','💙','💜','🖤','🤍','💔','🎉','🚀','🔥','✨','📦','💼','💰','💳','🏷️','📍','📞','✉️'].map((emoji, idx) => (
+                              <button
+                                key={idx}
+                                type="button"
+                                onClick={() => {
+                                  setChatInputText(prev => prev + emoji);
+                                }}
+                                className="hover:bg-slate-100 p-1.5 rounded-lg transition-colors text-center cursor-pointer"
+                              >
+                                {emoji}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+
+                        {/* Botão Emoji */}
+                        <button
+                          type="button"
+                          onClick={() => setShowEmojiPicker(!showEmojiPicker)}
+                          className="p-2 text-slate-500 hover:text-amber-500 hover:bg-amber-50 rounded-xl transition-colors text-lg cursor-pointer"
+                          title="Inserir Emoji"
+                        >
+                          😀
+                        </button>
+
+                        {/* Botão Anexo (Fotos, Vídeos, Documentos) */}
+                        <input
+                          type="file"
+                          ref={chatFileInputRef}
+                          onChange={handleChatFileChange}
+                          accept="image/*,video/*,audio/*,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain"
+                          className="hidden"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => chatFileInputRef.current?.click()}
+                          disabled={isUploadingMedia}
+                          className="p-2 text-slate-500 hover:text-emerald-600 hover:bg-emerald-50 rounded-xl transition-colors text-lg cursor-pointer disabled:opacity-50"
+                          title="Anexar Imagem, Vídeo ou Documento"
+                        >
+                          {isUploadingMedia ? '⏳' : '📎'}
+                        </button>
+
+                        <input
+                          type="text"
+                          placeholder={isUploadingMedia ? "Enviando arquivo..." : "Digite sua mensagem para o cliente no WhatsApp..."}
+                          value={chatInputText}
+                          onChange={e => setChatInputText(e.target.value)}
+                          disabled={isSendingChatMessage || isUploadingMedia}
+                          className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-xs outline-none focus:border-emerald-500 font-medium text-slate-800"
+                        />
+                        <button
+                          type="submit"
+                          disabled={isSendingChatMessage || isUploadingMedia || !chatInputText.trim()}
+                          className="bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl px-5 py-2.5 text-xs font-bold transition-all shadow-md shadow-emerald-600/20 disabled:opacity-50 flex items-center gap-1.5 cursor-pointer"
+                        >
+                          <span>{isSendingChatMessage || isUploadingMedia ? 'Enviando...' : '🚀 Enviar'}</span>
+                        </button>
+                      </form>
+                    </>
+                  ) : (
+                    <div className="flex flex-col items-center justify-center h-full text-slate-400">
+                      <p className="font-bold text-sm">Selecione uma conversa na lista à esquerda</p>
                     </div>
                   )}
-                </>
-              )}
-            </div>
-          </div>
+                </div>
+              </div>
+            )}
 
-        </div>
-      )}
+            {/* Sub-tab 2: Status / Conexão (QR Code) */}
+            {waSubTab === 'connection' && (
+              <div className="max-w-2xl mx-auto space-y-6 py-6">
+                <div className="bg-white p-8 rounded-xl shadow-sm border border-slate-100 text-center">
+                  <div className="w-16 h-16 bg-green-100 rounded-2xl mx-auto mb-4 flex items-center justify-center">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" /></svg>
+                  </div>
+                  <h2 className="text-2xl font-black text-slate-800 mb-2">Conecte o seu WhatsApp</h2>
+                  <p className="text-slate-500 mb-8 max-w-md mx-auto">Para que a Nexale envie mensagens automaticamente para seus leads, você precisa conectar o número da sua empresa.</p>
+
+                  <div className="border-2 border-dashed border-slate-200 rounded-xl p-8 bg-slate-50 relative overflow-hidden">
+                    <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-green-400 to-emerald-500"></div>
+
+                    {waConnected ? (
+                      <div className="flex flex-col items-center py-8">
+                        <div className="w-24 h-24 bg-green-100 rounded-full flex items-center justify-center mb-6 shadow-inner">
+                          <svg xmlns="http://www.w3.org/2000/svg" className="h-12 w-12 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                          </svg>
+                        </div>
+                        <h3 className="text-2xl font-bold text-slate-800 mb-2">Conectado com Sucesso!</h3>
+                        <p className="text-slate-500 mb-2 font-medium">Sua conta ({waUser}) está vinculada à Nexale.</p>
+                        <p className="text-sm text-slate-400 mb-8">Você pode conversar em tempo real na aba Central de Conversas!</p>
+
+                        <button 
+                          onClick={() => setWaSubTab('chat')}
+                          className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-4 px-8 rounded-xl transition-all shadow-lg shadow-emerald-600/30 transform hover:-translate-y-0.5 w-full max-w-sm flex items-center justify-center gap-3 text-lg mb-3"
+                        >
+                          <span>💬 Ir para Central de Conversas</span>
+                        </button>
+
+                        <button 
+                          onClick={async () => {
+                            if (window.confirm('Tem certeza que deseja desconectar o seu WhatsApp? Você terá que ler o QR Code novamente.')) {
+                              try {
+                                const activeInstance = userRole === 'superadmin' ? 'superadmin' : companyId;
+                                await fetch(`/evolution/instance/logout/${activeInstance}`, {
+                                  method: 'DELETE',
+                                  headers: { 'apikey': '123' }
+                                });
+                              } catch(e) {
+                                console.warn('Erro ao desconectar no servidor:', e);
+                              }
+                              setIsWahaConnected(false);
+                              setWaConnected(false);
+                              setWaUser('');
+                              handleGenerateQR();
+                            }
+                          }}
+                          className="mt-6 text-xs font-bold text-red-500 hover:text-red-700 transition-colors underline"
+                        >
+                          Desconectar WhatsApp
+                        </button>
+                      </div>
+                    ) : (
+                      <>
+                        <p className="text-sm font-bold text-slate-400 mb-6 uppercase tracking-wider">Passo a Passo</p>
+                        <ol className="text-left text-sm text-slate-600 mb-8 space-y-3 font-medium max-w-sm mx-auto">
+                          <li className="flex gap-3"><span className="bg-white border border-slate-200 rounded-full w-5 h-5 flex items-center justify-center text-xs font-bold shrink-0">1</span> Abra o WhatsApp no seu celular</li>
+                          <li className="flex gap-3"><span className="bg-white border border-slate-200 rounded-full w-5 h-5 flex items-center justify-center text-xs font-bold shrink-0">2</span> Toque em Mais opções (⋮) ou Configurações</li>
+                          <li className="flex gap-3"><span className="bg-white border border-slate-200 rounded-full w-5 h-5 flex items-center justify-center text-xs font-bold shrink-0">3</span> Toque em Dispositivos conectados e Conectar um dispositivo</li>
+                        </ol>
+
+                        {!qrCodeImage ? (
+                          <button 
+                            onClick={handleGenerateQR}
+                            disabled={isGeneratingQR}
+                            className="bg-green-500 hover:bg-green-600 text-slate-900 font-bold py-3 px-6 rounded-xl transition-all shadow-lg shadow-green-500/30 transform hover:-translate-y-0.5 w-full max-w-xs disabled:opacity-50"
+                          >
+                            {isGeneratingQR ? 'Gerando...' : 'Gerar QR Code de Conexão'}
+                          </button>
+                        ) : (
+                          <div className="flex flex-col items-center animate-fade-in">
+                            <div className="p-2 bg-white rounded-xl shadow-md shadow-indigo-900/10 border-4 border-white mb-4">
+                              <img src={qrCodeImage} alt="WhatsApp QR Code" className="w-64 h-64 object-contain" />
+                            </div>
+                            <p className="text-sm font-bold text-slate-600">Escaneie o código com seu WhatsApp para conectar.</p>
+                            <button 
+                              onClick={() => setQrCodeImage(null)} 
+                              className="mt-4 text-xs font-bold text-slate-400 hover:text-slate-600 transition-colors"
+                            >
+                              Gerar novo código
+                            </button>
+                          </div>
+                        )}
+                      </>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        );
+      })()}
 
       {currentView === 'ai_config' && (
         <div className="max-w-2xl mx-auto space-y-6 mt-8 animate-fade-in">
@@ -4470,29 +5167,208 @@ export default function App({ session }) {
       )}
 
       {showScraperModal && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50 animate-fade-in">
-          <div className="bg-white rounded-xl shadow-xl max-w-lg w-full p-6 border border-slate-100">
-            <h3 className="text-lg font-bold text-slate-800 mb-2">⚡ Captação Híbrida B2B</h3>
-            <p className="text-xs text-slate-500 mb-4">
-              1. Acesse o <a href="https://casadosdados.com.br/solucao/cnpj/pesquisa-avancada" target="_blank" rel="noreferrer" className="text-indigo-600 underline font-bold">Casa dos Dados</a> e pesquise as empresas. <br/>
-              2. Selecione e <strong>copie todo o texto</strong> da página de resultados e cole na caixa abaixo:
-            </p>
-            <div className="mb-4">
-              <label className="block text-xs font-bold text-slate-600 uppercase mb-1">Perfil dos Leads a Importar</label>
-              <input list="perfis" value={scraperPerfil} onChange={e => setScraperPerfil(e.target.value)} className="w-full border border-slate-300 rounded-lg p-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 bg-white" placeholder="Ex: B2B" />
-            </div>
-            <textarea 
-              value={scraperText}
-              onChange={(e) => setScraperText(e.target.value)}
-              className="w-full h-32 border border-slate-300 rounded-lg p-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 mb-4 font-mono text-xs"
-              placeholder="Cole o texto aqui... O sistema vai caçar os CNPJs automaticamente!"
-            ></textarea>
-            <div className="flex justify-end gap-3">
-              <button type="button" onClick={() => setShowScraperModal(false)} className="px-4 py-2 text-sm font-medium text-slate-500 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer" disabled={isScraping}>Cancelar</button>
-              <button type="button" onClick={handleScrape} className="px-4 py-2 text-sm font-medium text-slate-900 bg-purple-600 hover:bg-purple-700 rounded-lg transition-colors shadow-sm shadow-indigo-900/5 cursor-pointer flex items-center gap-2" disabled={isScraping}>
-                {isScraping ? 'Enriquecendo dados...' : 'Extrair e Importar'}
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fade-in">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-3xl w-full p-6 border border-slate-100 max-h-[90vh] flex flex-col">
+            
+            {/* Cabeçalho */}
+            <div className="flex items-center justify-between pb-4 border-b border-slate-100 mb-4">
+              <div>
+                <h3 className="text-xl font-black text-slate-800 flex items-center gap-2">
+                  ⚡ Captação de Leads B2B (Estilo WA Sender)
+                </h3>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Extraia contatos comerciais do Google Maps ou de listas de CNPJ para prospecção no WhatsApp.
+                </p>
+              </div>
+              <button 
+                onClick={() => setShowScraperModal(false)} 
+                className="text-slate-400 hover:text-slate-600 bg-slate-100 rounded-full w-8 h-8 flex items-center justify-center transition-colors font-bold"
+              >
+                ✕
               </button>
             </div>
+
+            {/* Alternador de Abas */}
+            <div className="flex bg-slate-100 p-1 rounded-xl mb-4 gap-1 overflow-x-auto">
+              <button 
+                onClick={() => setB2bTab('gmaps')} 
+                className={`px-3 py-2 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 whitespace-nowrap ${b2bTab === 'gmaps' ? 'bg-white text-purple-700 shadow-sm font-black' : 'text-slate-500 hover:text-slate-800'}`}
+              >
+                📍 Busca Automática
+              </button>
+              <button 
+                onClick={() => setB2bTab('gmaps_paste')} 
+                className={`px-3 py-2 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 whitespace-nowrap ${b2bTab === 'gmaps_paste' ? 'bg-white text-purple-700 shadow-sm font-black' : 'text-slate-500 hover:text-slate-800'}`}
+              >
+                📋 Copiar & Colar do Google Maps (Ilimitado)
+              </button>
+              <button 
+                onClick={() => setB2bTab('cnpj')} 
+                className={`px-3 py-2 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 whitespace-nowrap ${b2bTab === 'cnpj' ? 'bg-white text-purple-700 shadow-sm font-black' : 'text-slate-500 hover:text-slate-800'}`}
+              >
+                🏢 Importador CNPJ (Casa dos Dados)
+              </button>
+            </div>
+
+            {/* CONTEÚDO ABA 1: GOOGLE MAPS */}
+            {b2bTab === 'gmaps' && (
+              <div className="flex-1 overflow-y-auto space-y-4 pr-1 minimal-scrollbar">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 bg-purple-50/50 p-4 rounded-xl border border-purple-100">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
+                      1. Palavra-Chave / Segmento:
+                    </label>
+                    <input 
+                      type="text" 
+                      value={gmapsKeyword} 
+                      onChange={e => setGmapsKeyword(e.target.value)} 
+                      placeholder="Ex: Lojas de Tintas, Academias, Restaurantes" 
+                      className="w-full border border-slate-200 rounded-xl p-2.5 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-purple-500 bg-white"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
+                      2. Cidade / Estado:
+                    </label>
+                    <input 
+                      type="text" 
+                      value={gmapsLocation} 
+                      onChange={e => setGmapsLocation(e.target.value)} 
+                      placeholder="Ex: São Paulo, SP ou Campinas" 
+                      className="w-full border border-slate-200 rounded-xl p-2.5 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-purple-500 bg-white"
+                    />
+                  </div>
+                  <div className="sm:col-span-2 flex justify-end">
+                    <button 
+                      onClick={handleSearchGMaps} 
+                      disabled={isSearchingGMaps} 
+                      className="w-full sm:w-auto px-5 py-2.5 bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-slate-900 text-xs font-black rounded-xl transition-all shadow-md shadow-purple-600/20 flex items-center justify-center gap-2 cursor-pointer"
+                    >
+                      {isSearchingGMaps ? '⏳ Raspando Google Maps...' : '🔍 Buscar Empresas no Google Maps'}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Tabela de Resultados do Google Maps */}
+                {gmapsResults.length > 0 && (
+                  <div className="space-y-3 border-t border-slate-100 pt-3">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-slate-700">
+                        {gmapsResults.length} empresas encontradas ({gmapsSelectedIds.length} selecionadas)
+                      </span>
+                      <button 
+                        onClick={() => {
+                          if (gmapsSelectedIds.length === gmapsResults.length) setGmapsSelectedIds([]);
+                          else setGmapsSelectedIds(gmapsResults.map(r => r.id));
+                        }} 
+                        className="text-xs font-bold text-purple-600 hover:text-purple-700"
+                      >
+                        {gmapsSelectedIds.length === gmapsResults.length ? 'Desmarcar Todas' : 'Selecionar Todas'}
+                      </button>
+                    </div>
+
+                    <div className="max-h-60 overflow-y-auto space-y-2 border border-slate-200 rounded-xl p-2 bg-slate-50/50">
+                      {gmapsResults.map(res => (
+                        <label 
+                          key={res.id} 
+                          className={`flex items-start gap-3 p-3 rounded-xl border transition-all cursor-pointer ${gmapsSelectedIds.includes(res.id) ? 'bg-purple-50/70 border-purple-200 shadow-2xs' : 'bg-white border-slate-100 hover:border-slate-200'}`}
+                        >
+                          <input 
+                            type="checkbox" 
+                            checked={gmapsSelectedIds.includes(res.id)} 
+                            onChange={() => {
+                              setGmapsSelectedIds(prev => prev.includes(res.id) ? prev.filter(x => x !== res.id) : [...prev, res.id]);
+                            }} 
+                            className="mt-1 accent-purple-600" 
+                          />
+                          <div className="min-w-0 flex-1 space-y-0.5">
+                            <p className="text-xs font-extrabold text-slate-800 truncate">{res.empresa}</p>
+                            <p className="text-[11px] font-mono font-bold text-purple-700">
+                              📞 {res.telefone ? (res.telefone.startsWith('55') ? `+${res.telefone}` : res.telefone) : 'Telefone não informado'}
+                            </p>
+                            <p className="text-[10px] text-slate-500 truncate">📍 {res.endereco}</p>
+                          </div>
+                        </label>
+                      ))}
+                    </div>
+
+                    {/* Botões de Ação */}
+                    <div className="flex flex-col sm:flex-row gap-2 pt-2">
+                      <button 
+                        onClick={() => handleImportGMapsLeads('kanban')} 
+                        className="flex-1 py-3 bg-emerald-600 hover:bg-emerald-700 text-slate-900 text-xs font-black rounded-xl transition-all shadow-md shadow-emerald-600/20 flex items-center justify-center gap-1.5 cursor-pointer"
+                      >
+                        📋 Importar {gmapsSelectedIds.length} para o Kanban
+                      </button>
+                      <button 
+                        onClick={() => handleImportGMapsLeads('campanha')} 
+                        className="flex-1 py-3 bg-orange-500 hover:bg-orange-600 text-slate-900 text-xs font-black rounded-xl transition-all shadow-md shadow-orange-500/20 flex items-center justify-center gap-1.5 cursor-pointer"
+                      >
+                        🚀 Enviar {gmapsSelectedIds.length} para Disparo de Campanhas
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* CONTEÚDO ABA 2: COPIAR E COLAR DO GOOGLE MAPS */}
+            {b2bTab === 'gmaps_paste' && (
+              <div className="space-y-4">
+                <div className="bg-purple-50 border border-purple-100 p-3 rounded-xl flex items-center justify-between">
+                  <div>
+                    <p className="text-xs font-bold text-purple-900">🚀 Modo Extração Completa do Google Maps</p>
+                    <p className="text-[11px] text-purple-700">Pesquise no Google Maps, selecione todo o texto dos resultados e cole abaixo.</p>
+                  </div>
+                  <a 
+                    href={`https://www.google.com/maps/search/${encodeURIComponent((gmapsKeyword || 'academia') + ' ' + (gmapsLocation || 'gravatai'))}`}
+                    target="_blank" 
+                    rel="noreferrer"
+                    className="px-3 py-1.5 bg-purple-600 hover:bg-purple-700 text-slate-900 text-xs font-bold rounded-lg transition-all shadow-sm flex items-center gap-1 shrink-0"
+                  >
+                    🔗 Abrir Google Maps
+                  </a>
+                </div>
+                <textarea 
+                  value={gmapsPasteText}
+                  onChange={(e) => setGmapsPasteText(e.target.value)}
+                  className="w-full h-44 border border-slate-300 rounded-xl p-3 text-xs focus:outline-none focus:ring-2 focus:ring-purple-500 font-mono text-slate-700 bg-white"
+                  placeholder="Cole aqui o texto copiado da lista do Google Maps..."
+                ></textarea>
+                <div className="flex justify-end gap-3">
+                  <button type="button" onClick={() => setShowScraperModal(false)} className="px-4 py-2 text-xs font-bold text-slate-500 hover:bg-slate-100 rounded-lg">Cancelar</button>
+                  <button type="button" onClick={handleParseGMapsText} className="px-5 py-2.5 text-xs font-bold text-slate-900 bg-purple-600 hover:bg-purple-700 rounded-xl shadow-md transition-all flex items-center gap-2">
+                    📋 Extrair Empresas do Texto
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* CONTEÚDO ABA 3: CNPJ CASA DOS DADOS */}
+            {b2bTab === 'cnpj' && (
+              <div className="space-y-4">
+                <p className="text-xs text-slate-500">
+                  1. Acesse o <a href="https://casadosdados.com.br/solucao/cnpj/pesquisa-avancada" target="_blank" rel="noreferrer" className="text-indigo-600 underline font-bold">Casa dos Dados</a> e pesquise as empresas. <br/>
+                  2. Selecione e <strong>copie todo o texto</strong> da página de resultados e cole na caixa abaixo:
+                </p>
+                <div>
+                  <label className="block text-xs font-bold text-slate-600 uppercase mb-1">Perfil dos Leads a Importar</label>
+                  <input list="perfis" value={scraperPerfil} onChange={e => setScraperPerfil(e.target.value)} className="w-full border border-slate-300 rounded-lg p-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 bg-white" placeholder="Ex: B2B" />
+                </div>
+                <textarea 
+                  value={scraperText}
+                  onChange={(e) => setScraperText(e.target.value)}
+                  className="w-full h-32 border border-slate-300 rounded-lg p-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 font-mono text-xs"
+                  placeholder="Cole o texto aqui... O sistema vai caçar os CNPJs automaticamente!"
+                ></textarea>
+                <div className="flex justify-end gap-3">
+                  <button type="button" onClick={() => setShowScraperModal(false)} className="px-4 py-2 text-sm font-medium text-slate-500 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer" disabled={isScraping}>Cancelar</button>
+                  <button type="button" onClick={handleScrape} className="px-4 py-2 text-sm font-medium text-slate-900 bg-purple-600 hover:bg-purple-700 rounded-lg transition-colors shadow-sm shadow-indigo-900/5 cursor-pointer flex items-center gap-2" disabled={isScraping}>
+                    {isScraping ? 'Enriquecendo dados...' : 'Extrair e Importar CNPJs'}
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -5029,6 +5905,76 @@ export default function App({ session }) {
           </div>
         )}
       </div>
+
+      {/* ====== PAINEL WHATSAPP LATERAL ====== */}
+      {waPanel && (
+        <div
+          style={{
+            position: 'fixed', bottom: '24px', right: '24px', zIndex: 9999,
+            width: '320px',
+            background: 'linear-gradient(135deg, #0d1117 0%, #161b22 100%)',
+            borderRadius: '20px',
+            boxShadow: '0 25px 60px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.08)',
+            animation: 'waPanelSlideIn 0.3s cubic-bezier(0.34,1.56,0.64,1)',
+            overflow: 'hidden',
+            fontFamily: 'Inter, sans-serif',
+          }}
+        >
+          <style>{`
+            @keyframes waPanelSlideIn {
+              from { opacity: 0; transform: translateY(30px) scale(0.95); }
+              to   { opacity: 1; transform: translateY(0) scale(1); }
+            }
+          `}</style>
+
+          {/* Header */}
+          <div style={{ background: 'linear-gradient(135deg, #25d366 0%, #128c7e 100%)', padding: '14px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <div style={{ background: 'rgba(255,255,255,0.2)', borderRadius: '50%', width: 36, height: 36, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="white" viewBox="0 0 16 16"><path d="M13.601 2.326A7.85 7.85 0 0 0 7.994 0C3.627 0 .068 3.558.064 7.926c0 1.399.366 2.76 1.057 3.965L0 16l4.204-1.102a7.9 7.9 0 0 0 3.79.965h.004c4.368 0 7.926-3.558 7.93-7.93A7.9 7.9 0 0 0 13.6 2.326zM7.994 14.521a6.6 6.6 0 0 1-3.356-.92l-.24-.144-2.494.654.666-2.433-.156-.251a6.56 6.56 0 0 1-1.007-3.505c0-3.626 2.957-6.584 6.591-6.584a6.56 6.56 0 0 1 4.66 1.931 6.56 6.56 0 0 1 1.928 4.66c-.004 3.639-2.961 6.592-6.592 6.592m3.615-4.934c-.197-.099-1.17-.578-1.353-.646-.182-.065-.315-.099-.445.099-.133.197-.513.646-.627.775-.114.133-.232.148-.43.05-.197-.1-.836-.308-1.592-.985-.59-.525-.985-1.175-1.103-1.372-.114-.198-.011-.304.088-.403.087-.088.197-.232.296-.346.1-.114.133-.198.198-.33.065-.134.034-.248-.015-.347-.05-.099-.445-1.076-.612-1.47-.16-.389-.323-.335-.445-.34-.114-.007-.247-.007-.38-.007a.73.73 0 0 0-.529.247c-.182.198-.691.677-.691 1.654s.71 1.916.81 2.049c.098.133 1.394 2.132 3.383 2.992.47.205.84.326 1.129.418.475.152.904.129 1.246.08.38-.058 1.171-.48 1.338-.943.164-.464.164-.86.114-.943-.049-.084-.182-.133-.38-.232"/></svg>
+              </div>
+              <div>
+                <p style={{ color: 'white', fontWeight: 700, fontSize: 13, margin: 0 }}>WhatsApp</p>
+                <p style={{ color: 'rgba(255,255,255,0.8)', fontSize: 10, margin: 0 }}>Conversa pronta para enviar</p>
+              </div>
+            </div>
+            <button onClick={() => setWaPanel(null)} style={{ background: 'rgba(255,255,255,0.2)', border: 'none', borderRadius: '50%', width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: 'white', fontSize: 16, fontWeight: 'bold' }}>×</button>
+          </div>
+
+          {/* Contact info */}
+          <div style={{ padding: '16px' }}>
+            <div style={{ background: 'rgba(255,255,255,0.05)', borderRadius: 12, padding: '12px 14px', marginBottom: 12, border: '1px solid rgba(255,255,255,0.08)' }}>
+              <p style={{ color: 'rgba(255,255,255,0.5)', fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', margin: '0 0 4px' }}>Empresa</p>
+              <p style={{ color: 'white', fontWeight: 700, fontSize: 14, margin: '0 0 8px' }}>{waPanel.empresa}</p>
+              <p style={{ color: 'rgba(255,255,255,0.5)', fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', margin: '0 0 4px' }}>Contato</p>
+              <p style={{ color: 'rgba(255,255,255,0.85)', fontSize: 13, margin: '0 0 8px' }}>{waPanel.nome}</p>
+              <p style={{ color: 'rgba(255,255,255,0.5)', fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', margin: '0 0 4px' }}>Mensagem inicial</p>
+              <p style={{ color: '#25d366', fontSize: 12, fontStyle: 'italic', margin: 0 }}>"{waPanel.text}"</p>
+            </div>
+
+            {/* Buttons */}
+            <button
+              onClick={() => window.open(`https://web.whatsapp.com/send?phone=${waPanel.phone}&text=${encodeURIComponent(waPanel.text)}`, 'nexale_wa')}
+              style={{ width: '100%', background: 'linear-gradient(135deg, #25d366 0%, #128c7e 100%)', border: 'none', borderRadius: 12, padding: '13px', color: 'white', fontWeight: 800, fontSize: 14, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, marginBottom: 8, boxShadow: '0 4px 20px rgba(37,211,102,0.35)', transition: 'transform 0.15s, box-shadow 0.15s' }}
+              onMouseEnter={e => { e.currentTarget.style.transform='scale(1.02)'; e.currentTarget.style.boxShadow='0 6px 24px rgba(37,211,102,0.5)'; }}
+              onMouseLeave={e => { e.currentTarget.style.transform='scale(1)'; e.currentTarget.style.boxShadow='0 4px 20px rgba(37,211,102,0.35)'; }}
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="white" viewBox="0 0 16 16"><path d="M13.601 2.326A7.85 7.85 0 0 0 7.994 0C3.627 0 .068 3.558.064 7.926c0 1.399.366 2.76 1.057 3.965L0 16l4.204-1.102a7.9 7.9 0 0 0 3.79.965h.004c4.368 0 7.926-3.558 7.93-7.93A7.9 7.9 0 0 0 13.6 2.326zM7.994 14.521a6.6 6.6 0 0 1-3.356-.92l-.24-.144-2.494.654.666-2.433-.156-.251a6.56 6.56 0 0 1-1.007-3.505c0-3.626 2.957-6.584 6.591-6.584a6.56 6.56 0 0 1 4.66 1.931 6.56 6.56 0 0 1 1.928 4.66c-.004 3.639-2.961 6.592-6.592 6.592m3.615-4.934c-.197-.099-1.17-.578-1.353-.646-.182-.065-.315-.099-.445.099-.133.197-.513.646-.627.775-.114.133-.232.148-.43.05-.197-.1-.836-.308-1.592-.985-.59-.525-.985-1.175-1.103-1.372-.114-.198-.011-.304.088-.403.087-.088.197-.232.296-.346.1-.114.133-.198.198-.33.065-.134.034-.248-.015-.347-.05-.099-.445-1.076-.612-1.47-.16-.389-.323-.335-.445-.34-.114-.007-.247-.007-.38-.007a.73.73 0 0 0-.529.247c-.182.198-.691.677-.691 1.654s.71 1.916.81 2.049c.098.133 1.394 2.132 3.383 2.992.47.205.84.326 1.129.418.475.152.904.129 1.246.08.38-.058 1.171-.48 1.338-.943.164-.464.164-.86.114-.943-.049-.084-.182-.133-.38-.232"/></svg>
+              Abrir no WhatsApp Web
+            </button>
+
+            <a
+              href={`whatsapp://send?phone=${waPanel.phone}&text=${encodeURIComponent(waPanel.text)}`}
+              style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, width: '100%', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 12, padding: '10px', color: 'rgba(255,255,255,0.7)', fontWeight: 700, fontSize: 12, textDecoration: 'none', boxSizing: 'border-box', transition: 'background 0.2s' }}
+              onMouseEnter={e => e.currentTarget.style.background='rgba(255,255,255,0.12)'}
+              onMouseLeave={e => e.currentTarget.style.background='rgba(255,255,255,0.06)'}
+            >
+              📱 Abrir no App WhatsApp
+            </a>
+          </div>
+        </div>
+      )}
+      {/* ====== FIM PAINEL WHATSAPP ====== */}
 
     </div>
   );

@@ -115,6 +115,251 @@ app.post('/api/check-whatsapp', async (req, res) => {
   }
 });
 
+// Endpoint de Captação B2B Google Maps (Estilo WA Sender com Puppeteer Chrome)
+app.post('/api/scrape-gmaps', async (req, res) => {
+  try {
+    const { keyword, location } = req.body;
+    if (!keyword || !location) {
+      return res.status(400).json({ error: 'Informe a palavra-chave/segmento e a cidade/localidade.' });
+    }
+
+    const puppeteer = require('puppeteer');
+    const results = [];
+    const seen = new Set();
+
+    let browser;
+    try {
+      console.log(`🚀 Iniciando Puppeteer Chrome para buscar "${keyword} ${location}" no Google Maps...`);
+      browser = await puppeteer.launch({
+        executablePath: '/usr/bin/google-chrome-stable',
+        args: [
+          '--no-sandbox',
+          '--disable-setuid-sandbox',
+          '--disable-dev-shm-usage',
+          '--disable-accelerated-2d-canvas',
+          '--disable-gpu',
+          '--window-size=1280,800'
+        ],
+        headless: 'new'
+      });
+
+      const page = await browser.newPage();
+      await page.setViewport({ width: 1280, height: 800 });
+      await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36');
+
+      const query = encodeURIComponent(`${keyword} ${location}`);
+      await page.goto(`https://www.google.com/maps/search/${query}`, { waitUntil: 'domcontentloaded', timeout: 15000 });
+
+      // Espera o container de resultados aparecer e rola 5 vezes rapidamente
+      await page.waitForSelector('div[role="feed"], div[role="article"], div.Nv2pk', { timeout: 8000 }).catch(() => {});
+
+      for (let i = 0; i < 5; i++) {
+        await page.evaluate(() => {
+          const feed = document.querySelector('div[role="feed"]');
+          if (feed) feed.scrollTop += 2000;
+        });
+        await new Promise(r => setTimeout(r, 400));
+      }
+
+      const extracted = await page.evaluate(() => {
+        const items = [];
+        const cards = document.querySelectorAll('div[role="article"], div.Nv2pk');
+
+        cards.forEach((card, idx) => {
+          const nameEl = card.querySelector('div.fontHeadlineSmall, span.OSrA2b, div.qBF1Pd');
+          const name = nameEl ? nameEl.textContent.trim() : '';
+
+          const text = card.textContent || '';
+          const phoneMatch = text.match(/(?:\+?55\s?)?(?:\(?([1-9]{2})\)?\s?)?(?:9\d{4}|\d{4})[-\s]?\d{4}/);
+          
+          if (name && name.length > 2) {
+            let cleanPhone = phoneMatch ? phoneMatch[0].replace(/\D/g, '') : '';
+            if (cleanPhone && (cleanPhone.length === 10 || cleanPhone.length === 11)) {
+              cleanPhone = '55' + cleanPhone;
+            }
+
+            // Tenta obter o endereço da linha de detalhes
+            let address = '';
+            const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+            const addrLine = lines.find(l => l.includes('Av.') || l.includes('Rua') || l.includes('Alameda') || l.includes('Estrada') || l.includes('Rodovia') || l.includes('·'));
+            if (addrLine) address = addrLine;
+
+            items.push({
+              id: `gmaps-pup-${idx + 1}`,
+              empresa: name,
+              contato: name,
+              telefone: cleanPhone,
+              telefoneRaw: phoneMatch ? phoneMatch[0] : 'Não informado',
+              endereco: address || 'Endereço registrado no Google Maps',
+              categoria: 'Google Maps Place',
+              origem: 'Google Maps B2B (WA Sender VPS)'
+            });
+          }
+        });
+
+        return items;
+      });
+
+      (extracted || []).forEach(item => {
+        if (item.empresa && !seen.has(item.empresa.toLowerCase())) {
+          seen.add(item.empresa.toLowerCase());
+          results.push(item);
+        }
+      });
+
+      console.log(`✅ Puppeteer extraiu ${results.length} empresas diretamente do Google Maps!`);
+    } catch (pupErr) {
+      console.warn('⚠️ Alerta Puppeteer, recorrendo ao motor secundário:', pupErr.message);
+    } finally {
+      if (browser) await browser.close().catch(() => {});
+    }
+
+    // 2. Fallback Nominatim / Overpass caso Puppeteer retorne 0
+    if (results.length === 0) {
+      try {
+        const q = `${keyword} ${location}`;
+        const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(q)}&countrycodes=br&addressdetails=1&extratags=1&limit=50`;
+        const resNom = await fetch(url, { headers: { 'User-Agent': 'NexaleCRM-B2B-Engine/3.0 (contact@nexalecrm.com.br)' } });
+        if (resNom.ok) {
+          const data = await resNom.json();
+          (data || []).forEach((item, idx) => {
+            const tags = item.extratags || {};
+            const addr = item.address || {};
+            const name = item.name || (item.display_name ? item.display_name.split(',')[0] : '');
+            const phone = tags.phone || tags['contact:phone'] || tags['contact:mobile'] || tags['mobile'] || '';
+
+            let cleanPhone = phone ? phone.split(';')[0].replace(/\D/g, '') : '';
+            if (cleanPhone && (cleanPhone.length === 10 || cleanPhone.length === 11)) {
+              cleanPhone = '55' + cleanPhone;
+            }
+
+            const street = addr.road ? `${addr.road} ${addr.house_number || ''}` : '';
+            const city = addr.city || addr.town || addr.municipality || location;
+
+            if (name && !seen.has(name.toLowerCase())) {
+              seen.add(name.toLowerCase());
+              results.push({
+                id: `gmaps-nom-${item.place_id || idx}`,
+                empresa: name,
+                contato: name,
+                telefone: cleanPhone,
+                telefoneRaw: phone || 'Não informado',
+                endereco: street ? `${street}, ${city}` : (item.display_name || location),
+                categoria: item.type || item.class || keyword,
+                website: tags.website || tags['contact:website'] || '',
+                origem: 'Google Maps / Places B2B'
+              });
+            }
+          });
+        }
+      } catch (e) {
+        console.warn('[B2B Engine] Nominatim error:', e.message);
+      }
+    }
+
+    return res.json({ success: true, count: results.length, results });
+  } catch (err) {
+    console.error('❌ Erro no /api/scrape-gmaps:', err.message);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// Endpoint de Webhook da Evolution API (Recepção de mensagens em tempo real)
+app.post('/api/webhook/evolution', async (req, res) => {
+  try {
+    const body = req.body || {};
+    const event = body.event || body.type;
+
+    if (event === 'messages.upsert' || event === 'MESSAGES_UPSERT') {
+      const data = body.data || {};
+      const key = data.key || {};
+      const fromMe = key.fromMe || false;
+      const remoteJid = key.remoteJid || '';
+
+      if (remoteJid && remoteJid.includes('@s.whatsapp.net')) {
+        const rawPhone = remoteJid.split('@')[0];
+        let phone = rawPhone.replace(/\D/g, '');
+
+        const msgObj = data.message || {};
+        const text = msgObj.conversation || 
+                     (msgObj.extendedTextMessage && msgObj.extendedTextMessage.text) || 
+                     (msgObj.imageMessage && (msgObj.imageMessage.caption || '[Imagem]')) ||
+                     (msgObj.audioMessage && '[Áudio]') || '';
+
+        if (text) {
+          const pushName = data.pushName || 'Cliente';
+          console.log(`📩 [WA Webhook] ${fromMe ? 'Enviada' : 'Recebida'} (${phone}): ${text}`);
+
+          const { data: leadMatch } = await supabaseAdmin.from('leads').select('id, user_id').or(`telefone.ilike.%${phone.slice(-8)}%`).limit(1);
+
+          let targetLeadId = null;
+          let targetUserId = null;
+
+          if (leadMatch && leadMatch.length > 0) {
+            targetLeadId = leadMatch[0].id;
+            targetUserId = leadMatch[0].user_id;
+          } else if (!fromMe) {
+            const { data: newLead } = await supabaseAdmin.from('leads').insert([{
+              empresa: pushName,
+              contato: pushName,
+              telefone: phone,
+              coluna_id: 'leads',
+              origem: 'WhatsApp Receptor',
+              company_id: body.instance || null
+            }]).select('id, user_id').single();
+
+            if (newLead) {
+              targetLeadId = newLead.id;
+              targetUserId = newLead.user_id;
+            }
+          }
+
+          if (targetLeadId) {
+            const prefix = fromMe ? '[WA:out]' : '[WA:in]';
+            await supabaseAdmin.from('lead_notes').insert([{
+              lead_id: targetLeadId,
+              user_id: targetUserId,
+              nota: `${prefix} ${pushName}: ${text}`
+            }]);
+          }
+        }
+      }
+    }
+    return res.status(200).json({ status: 'ok' });
+  } catch (err) {
+    console.error('❌ Erro no webhook /api/webhook/evolution:', err.message);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// Endpoint para envio direto de mensagens do Chat pelo CRM
+app.post('/api/send-chat-message', async (req, res) => {
+  try {
+    const { leadId, companyId, phone, text } = req.body;
+    if (!phone || !text) {
+      return res.status(400).json({ error: 'Telefone e texto são obrigatórios.' });
+    }
+
+    await sendWahaMessage(companyId || 'superadmin', phone, text);
+
+    if (leadId) {
+      const { data: leadMatch } = await supabaseAdmin.from('leads').select('user_id').eq('id', leadId).single();
+      const userId = leadMatch ? leadMatch.user_id : null;
+
+      await supabaseAdmin.from('lead_notes').insert([{
+        lead_id: leadId,
+        user_id: userId,
+        nota: `[WA:out] Atendente: ${text}`
+      }]);
+    }
+
+    return res.json({ success: true });
+  } catch (err) {
+    console.error('❌ Erro ao enviar mensagem no chat:', err.message);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
 
 // Supabase Connection
 const supabaseUrl = 'https://zdlybiifkambebscydsp.supabase.co';
@@ -188,18 +433,40 @@ const sendWahaMessage = async (companyId, phoneNumber, text) => {
 
   const targetInstance = getTargetInstance(companyId);
 
-  // Simula digitação por 2 a 5 segundos antes de enviar (imita humano)
-  const typingDuration = Math.floor(Math.random() * 3000) + 2000;
-  await simulateTyping(targetInstance, clean, typingDuration);
+  // Tenta enviar com o número original (ex: 5551994790773)
+  try {
+    const res = await fetch(`http://localhost:8080/message/sendText/${targetInstance}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'apikey': '123' },
+      body: JSON.stringify({ number: clean, text })
+    });
+    if (res.ok) return res;
+  } catch (e) {
+    console.warn(`  ⚠️  Tentativa 1 com ${clean} falhou:`, e.message);
+  }
 
-  const sendRes = await fetch(`http://localhost:8080/message/sendText/${targetInstance}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'apikey': '123' },
-    body: JSON.stringify({ number: clean, text })
-  });
-  
-  if (!sendRes.ok) throw new Error(`Evolution API returned ${sendRes.status}`);
-  return sendRes;
+  // Fallback para número sem o 9º dígito se aplicável (ex: 555194790773)
+  if (clean.length === 13 && clean.startsWith('55')) {
+    const ddd = clean.slice(2, 4);
+    const ninth = clean[4];
+    const rest = clean.slice(5);
+    if (ninth === '9') {
+      const altNumber = '55' + ddd + rest;
+      console.log(`  🔄 Tentando variação sem o 9º dígito: ${altNumber}`);
+      try {
+        const resAlt = await fetch(`http://localhost:8080/message/sendText/${targetInstance}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'apikey': '123' },
+          body: JSON.stringify({ number: altNumber, text })
+        });
+        if (resAlt.ok) return resAlt;
+      } catch (e2) {
+        console.warn(`  ⚠️  Tentativa 2 com ${altNumber} falhou:`, e2.message);
+      }
+    }
+  }
+
+  throw new Error(`Não foi possível entregar a mensagem WhatsApp para o número ${phoneNumber}`);
 };
 
 const sendWahaMedia = async (companyId, phoneNumber, mediaType, mimeType, base64Media, fileName, caption = "") => {
@@ -208,31 +475,88 @@ const sendWahaMedia = async (companyId, phoneNumber, mediaType, mimeType, base64
     clean = '55' + clean;
   }
   const rawBase64 = base64Media.includes('base64,') ? base64Media.split('base64,')[1] : base64Media;
-  
   const targetInstance = getTargetInstance(companyId);
 
-  // Simula digitação por 2 a 5 segundos antes de enviar (imita humano)
-  const typingDuration = Math.floor(Math.random() * 3000) + 2000;
-  await simulateTyping(targetInstance, clean, typingDuration);
-
-  const res = await fetch(`http://localhost:8080/message/sendMedia/${targetInstance}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'apikey': '123' },
-    body: JSON.stringify({
-      number: clean,
-      mediatype: mediaType,
-      mimetype: mimeType,
-      media: rawBase64,
-      fileName: fileName,
-      caption: caption
-    })
-  });
-  if (!res.ok) {
-    const err = await res.text();
-    throw new Error(`Evolution API returned ${res.status}: ${err}`);
+  // Tenta enviar com o número original
+  try {
+    const res = await fetch(`http://localhost:8080/message/sendMedia/${targetInstance}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'apikey': '123' },
+      body: JSON.stringify({
+        number: clean,
+        mediatype: mediaType,
+        mimetype: mimeType,
+        media: rawBase64,
+        fileName: fileName,
+        caption: caption
+      })
+    });
+    if (res.ok) return res;
+  } catch (e) {
+    console.warn(`  ⚠️  Tentativa 1 mídia falhou para ${clean}:`, e.message);
   }
-  return res;
+
+  // Fallback sem o 9º dígito se aplicável
+  if (clean.length === 13 && clean.startsWith('55')) {
+    const ddd = clean.slice(2, 4);
+    const ninth = clean[4];
+    const rest = clean.slice(5);
+    if (ninth === '9') {
+      const altNumber = '55' + ddd + rest;
+      console.log(`  🔄 Tentando mídia no número alternativo: ${altNumber}`);
+      try {
+        const resAlt = await fetch(`http://localhost:8080/message/sendMedia/${targetInstance}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'apikey': '123' },
+          body: JSON.stringify({
+            number: altNumber,
+            mediatype: mediaType,
+            mimetype: mimeType,
+            media: rawBase64,
+            fileName: fileName,
+            caption: caption
+          })
+        });
+        if (resAlt.ok) return resAlt;
+      } catch (e2) {
+        console.warn(`  ⚠️  Tentativa 2 mídia falhou para ${altNumber}:`, e2.message);
+      }
+    }
+  }
+
+  throw new Error(`Não foi possível entregar a mídia para o número ${phoneNumber}`);
 };
+
+// Endpoint para envio de arquivos/mídia do Chat pelo CRM
+app.post('/api/send-chat-media', async (req, res) => {
+  try {
+    const { leadId, companyId, phone, mediaType, mimeType, base64Data, fileName, caption } = req.body;
+    if (!phone || !base64Data) {
+      return res.status(400).json({ error: 'Telefone e arquivo são obrigatórios.' });
+    }
+
+    await sendWahaMedia(companyId || 'superadmin', phone, mediaType || 'document', mimeType || 'application/octet-stream', base64Data, fileName || 'arquivo', caption || '');
+
+    if (leadId) {
+      const { data: leadMatch } = await supabaseAdmin.from('leads').select('user_id').eq('id', leadId).single();
+      const userId = leadMatch ? leadMatch.user_id : null;
+
+      const mediaIcon = mediaType === 'image' ? '🖼️' : mediaType === 'video' ? '🎥' : mediaType === 'audio' ? '🎵' : '📁';
+      const capText = caption ? ` - ${caption}` : '';
+
+      await supabaseAdmin.from('lead_notes').insert([{
+        lead_id: leadId,
+        user_id: userId,
+        nota: `[WA:out] Atendente: ${mediaIcon} [${fileName || 'Arquivo'}]${capText}`
+      }]);
+    }
+
+    return res.json({ success: true });
+  } catch (err) {
+    console.error('❌ Erro no /api/send-chat-media:', err.message);
+    return res.status(500).json({ error: err.message });
+  }
+});
 
 // Helper to resolve Brazilian phone variants (with/without DDI 55, with/without extra 9)
 function getPhoneVariants(phone) {
@@ -519,17 +843,26 @@ app.post('/webhook/:companyId', async (req, res) => {
       // Se o lead já existe no banco:
       if (existingLeads && existingLeads.length > 0) {
         const lead = existingLeads[0];
+
+        // 🟢 SEMPRE GRAVA A MENSAGEM DO CLIENTE NO HISTÓRICO DE NOTAS DO LEAD!
+        if (textContent) {
+          await supabaseAdmin.from('lead_notes').insert([{
+            lead_id: lead.id,
+            user_id: null,
+            nota: `[WA:in] Cliente: ${textContent}`
+          }]);
+        }
+
         const aiEnabled = compData?.message_templates?.ai_enabled;
         const aiPrompt = compData?.message_templates?.ai_prompt;
         const aiApiKey = compData?.message_templates?.ai_api_key;
 
         console.log(`Trace 5: Lead found. ai_paused: ${lead.ai_paused}, aiEnabled: ${aiEnabled}`);
-        // Se a IA estiver ativada e o atendimento não estiver pausado (human takeover):
         if (aiEnabled && !lead.ai_paused) {
           console.log(`🤖 Lead ${phone} existe e IA está ATIVA. Chamando Gemini...`);
           await respondWithGemini(companyId, lead.id, phone, textContent, aiPrompt, aiApiKey);
         } else {
-          console.log(`Lead ${phone} já existe mas a IA está desativada ou pausada. Parando.`);
+          console.log(`✅ Mensagem de ${phone} gravada no histórico de chat do CRM.`);
         }
         return; 
       }
