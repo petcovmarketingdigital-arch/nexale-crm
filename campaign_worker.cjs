@@ -433,18 +433,40 @@ const sendWahaMessage = async (companyId, phoneNumber, text) => {
 
   const targetInstance = getTargetInstance(companyId);
 
-  // Simula digitação por 2 a 5 segundos antes de enviar (imita humano)
-  const typingDuration = Math.floor(Math.random() * 3000) + 2000;
-  await simulateTyping(targetInstance, clean, typingDuration);
+  // Tenta enviar com o número original (ex: 5551994790773)
+  try {
+    const res = await fetch(`http://localhost:8080/message/sendText/${targetInstance}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'apikey': '123' },
+      body: JSON.stringify({ number: clean, text })
+    });
+    if (res.ok) return res;
+  } catch (e) {
+    console.warn(`  ⚠️  Tentativa 1 com ${clean} falhou:`, e.message);
+  }
 
-  const sendRes = await fetch(`http://localhost:8080/message/sendText/${targetInstance}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'apikey': '123' },
-    body: JSON.stringify({ number: clean, text })
-  });
-  
-  if (!sendRes.ok) throw new Error(`Evolution API returned ${sendRes.status}`);
-  return sendRes;
+  // Fallback para número sem o 9º dígito se aplicável (ex: 555194790773)
+  if (clean.length === 13 && clean.startsWith('55')) {
+    const ddd = clean.slice(2, 4);
+    const ninth = clean[4];
+    const rest = clean.slice(5);
+    if (ninth === '9') {
+      const altNumber = '55' + ddd + rest;
+      console.log(`  🔄 Tentando variação sem o 9º dígito: ${altNumber}`);
+      try {
+        const resAlt = await fetch(`http://localhost:8080/message/sendText/${targetInstance}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'apikey': '123' },
+          body: JSON.stringify({ number: altNumber, text })
+        });
+        if (resAlt.ok) return resAlt;
+      } catch (e2) {
+        console.warn(`  ⚠️  Tentativa 2 com ${altNumber} falhou:`, e2.message);
+      }
+    }
+  }
+
+  throw new Error(`Não foi possível entregar a mensagem WhatsApp para o número ${phoneNumber}`);
 };
 
 const sendWahaMedia = async (companyId, phoneNumber, mediaType, mimeType, base64Media, fileName, caption = "") => {
@@ -764,17 +786,26 @@ app.post('/webhook/:companyId', async (req, res) => {
       // Se o lead já existe no banco:
       if (existingLeads && existingLeads.length > 0) {
         const lead = existingLeads[0];
+
+        // 🟢 SEMPRE GRAVA A MENSAGEM DO CLIENTE NO HISTÓRICO DE NOTAS DO LEAD!
+        if (textContent) {
+          await supabaseAdmin.from('lead_notes').insert([{
+            lead_id: lead.id,
+            user_id: null,
+            nota: `[WA:in] Cliente: ${textContent}`
+          }]);
+        }
+
         const aiEnabled = compData?.message_templates?.ai_enabled;
         const aiPrompt = compData?.message_templates?.ai_prompt;
         const aiApiKey = compData?.message_templates?.ai_api_key;
 
         console.log(`Trace 5: Lead found. ai_paused: ${lead.ai_paused}, aiEnabled: ${aiEnabled}`);
-        // Se a IA estiver ativada e o atendimento não estiver pausado (human takeover):
         if (aiEnabled && !lead.ai_paused) {
           console.log(`🤖 Lead ${phone} existe e IA está ATIVA. Chamando Gemini...`);
           await respondWithGemini(companyId, lead.id, phone, textContent, aiPrompt, aiApiKey);
         } else {
-          console.log(`Lead ${phone} já existe mas a IA está desativada ou pausada. Parando.`);
+          console.log(`✅ Mensagem de ${phone} gravada no histórico de chat do CRM.`);
         }
         return; 
       }
