@@ -384,12 +384,23 @@ export default function App({ session }) {
   const [isSendingChatMessage, setIsSendingChatMessage] = useState(false);
   const [chatSearchQuery, setChatSearchQuery] = useState('');
   const chatBottomRef = useRef(null);
+  const prevMsgCountRef = useRef(0);
 
   useEffect(() => {
-    if (chatBottomRef.current) {
-      chatBottomRef.current.scrollIntoView({ behavior: 'smooth' });
+    if (chatMessages.length > prevMsgCountRef.current) {
+      if (chatBottomRef.current) {
+        chatBottomRef.current.scrollIntoView({ behavior: 'smooth' });
+      }
     }
+    prevMsgCountRef.current = chatMessages.length;
   }, [chatMessages]);
+
+  useEffect(() => {
+    prevMsgCountRef.current = 0;
+    if (chatBottomRef.current) {
+      chatBottomRef.current.scrollIntoView({ behavior: 'auto' });
+    }
+  }, [selectedChatLead]);
 
   const fetchChatMessages = async (lead) => {
     if (!lead) return;
