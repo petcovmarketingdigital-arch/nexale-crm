@@ -4285,7 +4285,10 @@ export default function App({ session }) {
                                (card.telefone && card.telefone.includes(q));
                       })
                       .map(card => {
-                        const isSelected = activeLead && activeLead.id === card.id;
+                        const isSelected = activeLead && (
+                          activeLead.id === card.id ||
+                          (activeLead.telefone && card.telefone && activeLead.telefone.replace(/\D/g,'').slice(-8) === card.telefone.replace(/\D/g,'').slice(-8))
+                        );
                         return (
                           <div
                             key={card.id}
