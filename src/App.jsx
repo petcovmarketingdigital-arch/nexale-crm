@@ -407,7 +407,12 @@ export default function App({ session }) {
         .order('created_at', { ascending: true });
 
       if (!error && data) {
-        setChatMessages(data.filter(n => n.nota && (n.nota.startsWith('[WA:') || n.nota.startsWith('[WhatsApp]'))));
+        setChatMessages(data.filter(n => n.nota && (
+          n.nota.startsWith('[WA:') ||
+          n.nota.startsWith('[WhatsApp]') ||
+          n.nota.startsWith('Cliente:') ||
+          n.nota.startsWith('Atendente')
+        )));
       }
     } catch (e) {
       console.warn('Erro ao buscar mensagens do chat:', e.message);
@@ -4250,8 +4255,8 @@ export default function App({ session }) {
                           </div>
                         ) : (
                           chatMessages.map(msg => {
-                            const isOut = msg.nota && msg.nota.startsWith('[WA:out]');
-                            const cleanText = msg.nota ? msg.nota.replace(/^\[WA:(in|out)\]\s*/, '') : '';
+                            const isOut = msg.nota && (msg.nota.startsWith('[WA:out]') || msg.nota.startsWith('Atendente'));
+                            const cleanText = msg.nota ? msg.nota.replace(/^(\[WA:(in|out)\]|Cliente:|Atendente(\s*\(IA\))?:)\s*/, '') : '';
                             return (
                               <div key={msg.id} className={`flex ${isOut ? 'justify-end' : 'justify-start'}`}>
                                 <div className={`max-w-[75%] rounded-2xl px-4 py-2.5 shadow-xs text-xs font-medium ${
