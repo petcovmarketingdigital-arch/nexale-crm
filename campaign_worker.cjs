@@ -264,6 +264,34 @@ app.post('/api/scrape-gmaps', async (req, res) => {
   }
 });
 
+// Helper para extrair texto ou descrição de mídias (fotos, vídeos, áudios, documentos) recebidas via WhatsApp
+function extractMessageText(messageObj) {
+  if (!messageObj) return '';
+  let text = messageObj.conversation || (messageObj.extendedTextMessage && messageObj.extendedTextMessage.text) || '';
+
+  let mediaTag = '';
+  if (messageObj.imageMessage) {
+    const cap = messageObj.imageMessage.caption || '';
+    mediaTag = `🖼️ [Imagem]${cap ? ' - ' + cap : ''}`;
+  } else if (messageObj.videoMessage) {
+    const cap = messageObj.videoMessage.caption || '';
+    mediaTag = `🎥 [Vídeo]${cap ? ' - ' + cap : ''}`;
+  } else if (messageObj.audioMessage) {
+    mediaTag = `🎵 [Áudio/Voz]`;
+  } else if (messageObj.documentMessage) {
+    const fName = messageObj.documentMessage.fileName || messageObj.documentMessage.title || 'Documento';
+    const cap = messageObj.documentMessage.caption || '';
+    mediaTag = `📁 [Documento: ${fName}]${cap ? ' - ' + cap : ''}`;
+  } else if (messageObj.stickerMessage) {
+    mediaTag = `🎨 [Figurinha]`;
+  }
+
+  if (mediaTag) {
+    return text ? `${mediaTag}\n${text}` : mediaTag;
+  }
+  return text;
+}
+
 // Endpoint de Webhook da Evolution API (Recepção de mensagens em tempo real)
 app.post('/api/webhook/evolution', async (req, res) => {
   try {
@@ -280,11 +308,7 @@ app.post('/api/webhook/evolution', async (req, res) => {
         const rawPhone = remoteJid.split('@')[0];
         let phone = rawPhone.replace(/\D/g, '');
 
-        const msgObj = data.message || {};
-        const text = msgObj.conversation || 
-                     (msgObj.extendedTextMessage && msgObj.extendedTextMessage.text) || 
-                     (msgObj.imageMessage && (msgObj.imageMessage.caption || '[Imagem]')) ||
-                     (msgObj.audioMessage && '[Áudio]') || '';
+        const text = extractMessageText(data.message);
 
         if (text) {
           const pushName = data.pushName || 'Cliente';
@@ -816,7 +840,7 @@ app.post('/webhook/:companyId', async (req, res) => {
 
       // O companyId já foi extraído via req.params.companyId na linha 101
       const messageObj = msgData.message || {};
-      const textContent = messageObj.conversation || (messageObj.extendedTextMessage && messageObj.extendedTextMessage.text) || '';
+      const textContent = extractMessageText(messageObj);
 
       console.log(`CompanyId: ${companyId}`);
       console.log(`Phone: ${phone}`);
