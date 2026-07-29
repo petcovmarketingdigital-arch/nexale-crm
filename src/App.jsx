@@ -380,6 +380,9 @@ export default function App({ session }) {
   const [waSubTab, setWaSubTab] = useState('chat');
   const [selectedChatLead, setSelectedChatLead] = useState(null);
   const [chatMessages, setChatMessages] = useState([]);
+  const [chatInputText, setChatInputText] = useState('');
+  const [isSendingChatMessage, setIsSendingChatMessage] = useState(false);
+  const [chatSearchQuery, setChatSearchQuery] = useState('');
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [isUploadingMedia, setIsUploadingMedia] = useState(false);
   const chatFileInputRef = useRef(null);
