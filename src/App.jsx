@@ -385,6 +385,7 @@ export default function App({ session }) {
   const [chatSearchQuery, setChatSearchQuery] = useState('');
   const [selectedEtiquetaFilter, setSelectedEtiquetaFilter] = useState('all');
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const [showEtiquetaPopover, setShowEtiquetaPopover] = useState(false);
   const [showQuickRepliesPopover, setShowQuickRepliesPopover] = useState(false);
   const [showManageQuickRepliesModal, setShowManageQuickRepliesModal] = useState(false);
   const [editingReply, setEditingReply] = useState(null);
