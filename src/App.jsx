@@ -384,6 +384,7 @@ export default function App({ session }) {
   const [isSendingChatMessage, setIsSendingChatMessage] = useState(false);
   const [chatSearchQuery, setChatSearchQuery] = useState('');
   const [selectedEtiquetaFilter, setSelectedEtiquetaFilter] = useState('all');
+  const [selectedChatSellerFilter, setSelectedChatSellerFilter] = useState('all');
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [showEtiquetaPopover, setShowEtiquetaPopover] = useState(false);
   const [showQuickRepliesPopover, setShowQuickRepliesPopover] = useState(false);
@@ -4437,18 +4438,35 @@ export default function App({ session }) {
                       onChange={e => setChatSearchQuery(e.target.value)}
                       className="w-full bg-slate-100 border border-slate-200 rounded-xl px-3 py-2 text-xs outline-none focus:border-emerald-500 font-medium"
                     />
-                    <div className="flex items-center justify-between text-xs pt-1 border-t border-slate-100">
-                      <span className="text-[11px] font-bold text-slate-500">🏷️ Etiqueta:</span>
-                      <select
-                        value={selectedEtiquetaFilter}
-                        onChange={e => setSelectedEtiquetaFilter(e.target.value)}
-                        className="bg-slate-100 border border-slate-200 text-slate-700 font-semibold text-[11px] rounded-lg px-2 py-1 outline-none focus:border-emerald-500 cursor-pointer"
-                      >
-                        <option value="all">Todas as etiquetas</option>
-                        {DEFAULT_ETIQUETAS.map(et => (
-                          <option key={et.id} value={et.id}>{et.name}</option>
-                        ))}
-                      </select>
+                    <div className="flex flex-col gap-1.5 pt-1 border-t border-slate-100">
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="text-[11px] font-bold text-slate-500">🏷️ Etiqueta:</span>
+                        <select
+                          value={selectedEtiquetaFilter}
+                          onChange={e => setSelectedEtiquetaFilter(e.target.value)}
+                          className="bg-slate-100 border border-slate-200 text-slate-700 font-semibold text-[11px] rounded-lg px-2 py-1 outline-none focus:border-emerald-500 cursor-pointer max-w-[160px] truncate"
+                        >
+                          <option value="all">Todas as etiquetas</option>
+                          {DEFAULT_ETIQUETAS.map(et => (
+                            <option key={et.id} value={et.id}>{et.name}</option>
+                          ))}
+                        </select>
+                      </div>
+                      {(userRole === 'admin' || userRole === 'superadmin') && teamMembers.length > 0 && (
+                        <div className="flex items-center justify-between text-xs">
+                          <span className="text-[11px] font-bold text-slate-500">👤 Vendedor:</span>
+                          <select
+                            value={selectedChatSellerFilter}
+                            onChange={e => setSelectedChatSellerFilter(e.target.value)}
+                            className="bg-slate-100 border border-slate-200 text-slate-700 font-semibold text-[11px] rounded-lg px-2 py-1 outline-none focus:border-emerald-500 cursor-pointer max-w-[160px] truncate"
+                          >
+                            <option value="all">Todos os vendedores</option>
+                            {teamMembers.map(tm => (
+                              <option key={tm.id} value={tm.id}>{tm.name || tm.email}</option>
+                            ))}
+                          </select>
+                        </div>
+                      )}
                     </div>
                   </div>
 
@@ -4458,6 +4476,9 @@ export default function App({ session }) {
                         if (selectedEtiquetaFilter !== 'all') {
                           const leadTags = card.dados_nicho?.etiquetas || [];
                           if (!leadTags.includes(selectedEtiquetaFilter)) return false;
+                        }
+                        if (selectedChatSellerFilter !== 'all') {
+                          if (card.user_id !== selectedChatSellerFilter) return false;
                         }
                         if (!chatSearchQuery) return true;
                         const q = chatSearchQuery.toLowerCase();
