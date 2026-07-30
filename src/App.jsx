@@ -389,6 +389,58 @@ export default function App({ session }) {
   const chatBottomRef = useRef(null);
   const prevMsgCountRef = useRef(0);
 
+  const [chatNotesMap, setChatNotesMap] = useState({});
+  const [readTimestamps, setReadTimestamps] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem('nexale_chat_read_times') || '{}');
+    } catch (e) {
+      return {};
+    }
+  });
+
+  const markLeadAsRead = (leadId) => {
+    if (!leadId) return;
+    const now = Date.now();
+    setReadTimestamps(prev => {
+      const updated = { ...prev, [leadId]: now };
+      try { localStorage.setItem('nexale_chat_read_times', JSON.stringify(updated)); } catch (e) {}
+      return updated;
+    });
+  };
+
+  const fetchAllRecentNotes = async () => {
+    try {
+      const allCards = columns.flatMap(col => col.cards || []);
+      if (allCards.length === 0) return;
+      const leadIds = allCards.map(c => c.id);
+
+      const { data: notes, error } = await supabase
+        .from('lead_notes')
+        .select('id, lead_id, nota, created_at')
+        .in('lead_id', leadIds)
+        .order('created_at', { ascending: false })
+        .limit(500);
+
+      if (!error && notes) {
+        const map = {};
+        notes.forEach(note => {
+          if (note.nota && (
+            note.nota.startsWith('[WA:') ||
+            note.nota.startsWith('[WhatsApp]') ||
+            note.nota.startsWith('Cliente:') ||
+            note.nota.startsWith('Atendente')
+          )) {
+            if (!map[note.lead_id]) map[note.lead_id] = [];
+            map[note.lead_id].push(note);
+          }
+        });
+        setChatNotesMap(map);
+      }
+    } catch (err) {
+      console.warn('Erro ao carregar notas do chat:', err.message);
+    }
+  };
+
   const handleChatFileChange = async (e) => {
     const file = e.target.files?.[0];
     const activeLead = selectedChatLead || (columns.flatMap(c => c.cards || [])[0]);
@@ -507,17 +559,23 @@ export default function App({ session }) {
     }
   };
 
-  // Real-time polling para novas mensagens no Chat (2s)
+  // Real-time polling para novas mensagens e notificação de não lidas no Chat (2s)
   useEffect(() => {
     let timer;
     if (currentView === 'whatsapp' && waSubTab === 'chat') {
       const activeLead = selectedChatLead || (columns.flatMap(c => c.cards || [])[0]);
       if (activeLead) {
         fetchChatMessages(activeLead);
-        timer = setInterval(() => {
-          fetchChatMessages(activeLead);
-        }, 2000);
+        markLeadAsRead(activeLead.id);
       }
+      fetchAllRecentNotes();
+      timer = setInterval(() => {
+        const currentActive = selectedChatLead || (columns.flatMap(c => c.cards || [])[0]);
+        if (currentActive) {
+          fetchChatMessages(currentActive);
+        }
+        fetchAllRecentNotes();
+      }, 2500);
     }
     return () => {
       if (timer) clearInterval(timer);
@@ -4285,26 +4343,80 @@ export default function App({ session }) {
                                (card.telefone && card.telefone.includes(q));
                       })
                       .map(card => {
+                        const notesForLead = chatNotesMap[card.id] || [];
+                        const latestNote = notesForLead[0];
+                        const lastActivityTime = latestNote
+                          ? new Date(latestNote.created_at).getTime()
+                          : (card.data_movimentacao ? new Date(card.data_movimentacao).getTime() : 0);
+
+                        const readTime = readTimestamps[card.id] || 0;
                         const isSelected = activeLead && (
                           activeLead.id === card.id ||
                           (activeLead.telefone && card.telefone && activeLead.telefone.replace(/\D/g,'').slice(-8) === card.telefone.replace(/\D/g,'').slice(-8))
                         );
+
+                        const unreadCount = isSelected ? 0 : notesForLead.filter(n => {
+                          const isIncoming = n.nota && (n.nota.startsWith('[WA:in]') || n.nota.startsWith('Cliente:'));
+                          return isIncoming && new Date(n.created_at).getTime() > readTime;
+                        }).length;
+
+                        return { ...card, lastActivityTime, unreadCount, latestNote, isSelected };
+                      })
+                      .sort((a, b) => b.lastActivityTime - a.lastActivityTime)
+                      .map(card => {
+                        const formatNoteTime = (isoString) => {
+                          if (!isoString) return '';
+                          const d = new Date(isoString);
+                          if (isNaN(d.getTime())) return '';
+                          const now = new Date();
+                          if (d.toDateString() === now.toDateString()) {
+                            return d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+                          }
+                          return d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+                        };
+
+                        const getSnippetText = (nota) => {
+                          if (!nota) return '';
+                          return nota
+                            .replace(/^\[WA:(in|out)\]\s*/i, '')
+                            .replace(/^(Cliente|Atendente(\s*\(IA\))?):\s*/i, '');
+                        };
+
                         return (
                           <div
                             key={card.id}
-                            onClick={() => setSelectedChatLead(card)}
+                            onClick={() => {
+                              setSelectedChatLead(card);
+                              markLeadAsRead(card.id);
+                            }}
                             className={`p-3.5 flex items-center gap-3 cursor-pointer transition-all ${
-                              isSelected ? 'bg-emerald-50/80 border-l-4 border-emerald-600' : 'hover:bg-slate-100/80'
+                              card.isSelected ? 'bg-emerald-50/80 border-l-4 border-emerald-600' : 'hover:bg-slate-100/80'
                             }`}
                           >
                             <div className="w-10 h-10 rounded-full bg-emerald-600 text-white font-bold text-sm flex items-center justify-center shrink-0 shadow-xs">
                               {(card.contato || card.empresa || 'C').charAt(0).toUpperCase()}
                             </div>
                             <div className="flex-1 min-w-0">
-                              <div className="flex items-center justify-between mb-0.5">
-                                <h4 className="font-bold text-slate-800 text-xs truncate">{card.empresa || card.contato}</h4>
+                              <div className="flex items-center justify-between mb-0.5 gap-1">
+                                <h4 className={`text-xs truncate ${card.unreadCount > 0 ? 'font-black text-slate-900' : 'font-bold text-slate-800'}`}>
+                                  {card.empresa || card.contato}
+                                </h4>
+                                {card.latestNote && (
+                                  <span className="text-[10px] text-slate-400 font-medium shrink-0 ml-1">
+                                    {formatNoteTime(card.latestNote.created_at)}
+                                  </span>
+                                )}
                               </div>
-                              <p className="text-[11px] text-slate-500 truncate font-medium">{card.contato} • {card.telefone}</p>
+                              <div className="flex items-center justify-between gap-1">
+                                <p className={`text-[11px] truncate ${card.unreadCount > 0 ? 'font-bold text-slate-700' : 'text-slate-500 font-medium'} flex-1`}>
+                                  {card.latestNote ? getSnippetText(card.latestNote.nota) : `${card.contato} • ${card.telefone}`}
+                                </p>
+                                {card.unreadCount > 0 && (
+                                  <span className="bg-emerald-500 text-white text-[10px] font-black min-w-[20px] h-5 px-1.5 rounded-full flex items-center justify-center shadow-xs shrink-0 animate-pulse">
+                                    {card.unreadCount}
+                                  </span>
+                                )}
+                              </div>
                             </div>
                           </div>
                         );
