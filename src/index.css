@@ -10,20 +10,23 @@ body {
 }
 
 .minimal-scrollbar::-webkit-scrollbar {
-  height: 12px;
+  width: 7px;
+  height: 7px;
 }
 .minimal-scrollbar::-webkit-scrollbar-track {
   background: #f1f5f9;
   border-radius: 8px;
-  margin: 0 4px;
 }
 .minimal-scrollbar::-webkit-scrollbar-thumb {
-  background: #cbd5e1;
+  background: #94a3b8;
   border-radius: 8px;
-  border: 3px solid #f1f5f9;
 }
 .minimal-scrollbar::-webkit-scrollbar-thumb:hover {
-  background: #94a3b8;
+  background: #64748b;
+}
+.minimal-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: #94a3b8 #f1f5f9;
 }
 
 .custom-scrollbar::-webkit-scrollbar {

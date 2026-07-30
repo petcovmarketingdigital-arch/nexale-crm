@@ -4322,7 +4322,7 @@ export default function App({ session }) {
             {waSubTab === 'chat' && (
               <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 h-[720px] bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
                 {/* Coluna Esquerda: Lista de Conversas / Leads (4 cols) */}
-                <div className="lg:col-span-4 border-r border-slate-100 flex flex-col h-full bg-slate-50/50">
+                <div className="lg:col-span-4 border-r border-slate-100 flex flex-col h-full bg-slate-50/50 min-h-0">
                   <div className="p-3 border-b border-slate-100 bg-white">
                     <input
                       type="text"
