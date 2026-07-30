@@ -385,8 +385,35 @@ export default function App({ session }) {
   const [chatSearchQuery, setChatSearchQuery] = useState('');
   const [selectedEtiquetaFilter, setSelectedEtiquetaFilter] = useState('all');
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
-  const [showEtiquetaPopover, setShowEtiquetaPopover] = useState(false);
   const [showQuickRepliesPopover, setShowQuickRepliesPopover] = useState(false);
+  const [showManageQuickRepliesModal, setShowManageQuickRepliesModal] = useState(false);
+  const [editingReply, setEditingReply] = useState(null);
+  const [newReplyTitle, setNewReplyTitle] = useState('');
+  const [newReplyText, setNewReplyText] = useState('');
+
+  const [quickReplies, setQuickReplies] = useState(() => {
+    try {
+      const saved = localStorage.getItem('nexale_quick_replies');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch (e) {}
+    return [
+      { id: '1', title: '👋 Boas-vindas', text: 'Olá! Seja muito bem-vindo(a). Como posso te ajudar hoje?' },
+      { id: '2', title: '📋 Envio de Proposta', text: 'Olá! Acabei de preparar a sua proposta comercial. Qualquer dúvida sobre valores ou condições, estou à disposição!' },
+      { id: '3', title: '💳 Dados para PIX', text: 'Seguem nossos dados bancários para pagamento via PIX:\nChave PIX: financeiro@nexalecrm.com.br\nFavorecido: Nexale CRM Tech' },
+      { id: '4', title: '📍 Endereço & Localização', text: 'Nosso endereço de atendimento é: Av. Paulista, 1000 - São Paulo/SP. Atendemos de Seg a Sex das 09h às 18h.' },
+      { id: '5', title: '📅 Agendamento de Reunião', text: 'Podemos agendar uma breve apresentação de 15 minutos por videochamada. Qual dia e horário fica melhor para você?' }
+    ];
+  });
+
+  const saveQuickReplies = (newReplies) => {
+    setQuickReplies(newReplies);
+    try {
+      localStorage.setItem('nexale_quick_replies', JSON.stringify(newReplies));
+    } catch (e) {}
+  };
   const [isUploadingMedia, setIsUploadingMedia] = useState(false);
   const chatFileInputRef = useRef(null);
   const chatBottomRef = useRef(null);
@@ -4661,13 +4688,21 @@ export default function App({ session }) {
                       </div>
 
                       {/* Chips de Resposta Rápida */}
-                      <div className="px-3 py-1.5 bg-white border-t border-slate-100 flex gap-1.5 overflow-x-auto minimal-scrollbar shrink-0">
-                        {DEFAULT_QUICK_REPLIES.map((tmpl, idx) => (
+                      <div className="px-3 py-1.5 bg-white border-t border-slate-100 flex items-center gap-1.5 overflow-x-auto minimal-scrollbar shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => setShowManageQuickRepliesModal(true)}
+                          className="text-[10px] font-bold bg-emerald-100 hover:bg-emerald-200 text-emerald-800 px-2.5 py-1 rounded-full whitespace-nowrap transition-colors border border-emerald-300 cursor-pointer flex items-center gap-1 shrink-0"
+                          title="Criar, Editar ou Excluir Respostas Rápidas"
+                        >
+                          ⚙️ Editar Respostas
+                        </button>
+                        {quickReplies.map((tmpl) => (
                           <button
-                            key={idx}
+                            key={tmpl.id || tmpl.title}
                             type="button"
                             onClick={() => setChatInputText(tmpl.text)}
-                            className="text-[10px] font-bold bg-slate-100 hover:bg-emerald-50 hover:text-emerald-700 text-slate-600 px-2.5 py-1 rounded-full whitespace-nowrap transition-colors border border-slate-200 cursor-pointer"
+                            className="text-[10px] font-bold bg-slate-100 hover:bg-emerald-50 hover:text-emerald-700 text-slate-600 px-2.5 py-1 rounded-full whitespace-nowrap transition-colors border border-slate-200 cursor-pointer shrink-0"
                             title={tmpl.text}
                           >
                             + {tmpl.title}
@@ -4791,6 +4826,127 @@ export default function App({ session }) {
                           <span>{isSendingChatMessage || isUploadingMedia ? 'Enviando...' : '🚀 Enviar'}</span>
                         </button>
                       </form>
+
+                      {/* Modal de Gerenciamento de Respostas Rápidas */}
+                      {showManageQuickRepliesModal && (
+                        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-[999] animate-fade-in">
+                          <div className="bg-white rounded-3xl shadow-2xl max-w-lg w-full p-6 space-y-4 border border-slate-100">
+                            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                              <h3 className="font-extrabold text-base text-slate-800 flex items-center gap-2">
+                                <span>⚡ Gerenciar Respostas Rápidas</span>
+                              </h3>
+                              <button
+                                onClick={() => {
+                                  setShowManageQuickRepliesModal(false);
+                                  setEditingReply(null);
+                                  setNewReplyTitle('');
+                                  setNewReplyText('');
+                                }}
+                                className="text-slate-400 hover:text-slate-600 font-bold text-lg cursor-pointer"
+                              >
+                                ✕
+                              </button>
+                            </div>
+
+                            {/* Formulário para Adicionar / Editar */}
+                            <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200/80 space-y-3">
+                              <h4 className="font-bold text-xs text-slate-700">
+                                {editingReply ? '✏️ Editar Resposta Rápida' : '➕ Nova Resposta Rápida'}
+                              </h4>
+                              <input
+                                type="text"
+                                placeholder="Título do Atalho (ex: 👋 Boas-vindas, 💳 PIX, 📍 Endereço)"
+                                value={newReplyTitle}
+                                onChange={e => setNewReplyTitle(e.target.value)}
+                                className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-medium outline-none focus:border-emerald-500"
+                              />
+                              <textarea
+                                rows={3}
+                                placeholder="Mensagem completa que será inserida ao clicar..."
+                                value={newReplyText}
+                                onChange={e => setNewReplyText(e.target.value)}
+                                className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-medium outline-none focus:border-emerald-500 minimal-scrollbar"
+                              />
+                              <div className="flex justify-end gap-2">
+                                {editingReply && (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setEditingReply(null);
+                                      setNewReplyTitle('');
+                                      setNewReplyText('');
+                                    }}
+                                    className="px-3 py-1.5 rounded-xl text-xs font-bold bg-slate-200 text-slate-700 hover:bg-slate-300 cursor-pointer"
+                                  >
+                                    Cancelar Edição
+                                  </button>
+                                )}
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    if (!newReplyTitle.trim() || !newReplyText.trim()) return;
+                                    if (editingReply) {
+                                      const updated = quickReplies.map(r => r.id === editingReply.id ? { ...r, title: newReplyTitle, text: newReplyText } : r);
+                                      saveQuickReplies(updated);
+                                      setEditingReply(null);
+                                    } else {
+                                      const newItem = { id: Date.now().toString(), title: newReplyTitle, text: newReplyText };
+                                      saveQuickReplies([...quickReplies, newItem]);
+                                    }
+                                    setNewReplyTitle('');
+                                    setNewReplyText('');
+                                  }}
+                                  className="px-4 py-1.5 rounded-xl text-xs font-bold bg-emerald-600 text-white hover:bg-emerald-700 shadow-sm shadow-emerald-600/20 cursor-pointer"
+                                >
+                                  {editingReply ? 'Salvar Alteração' : '➕ Adicionar Atalho'}
+                                </button>
+                              </div>
+                            </div>
+
+                            {/* Lista de Respostas Atuais */}
+                            <div className="space-y-2 max-h-60 overflow-y-auto minimal-scrollbar">
+                              <h4 className="font-bold text-xs text-slate-500">Seus Atalhos Cadastrados ({quickReplies.length}):</h4>
+                              {quickReplies.length === 0 ? (
+                                <p className="text-xs text-slate-400 text-center py-4">Nenhuma resposta rápida cadastrada ainda.</p>
+                              ) : (
+                                quickReplies.map((reply) => (
+                                  <div key={reply.id} className="p-3 bg-white border border-slate-200 rounded-2xl flex items-start justify-between gap-3 hover:border-slate-300 transition-all">
+                                    <div className="min-w-0 flex-1">
+                                      <h5 className="font-bold text-xs text-slate-800">{reply.title}</h5>
+                                      <p className="text-[11px] text-slate-500 font-medium whitespace-pre-wrap mt-0.5 line-clamp-2">{reply.text}</p>
+                                    </div>
+                                    <div className="flex items-center gap-1 shrink-0">
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setEditingReply(reply);
+                                          setNewReplyTitle(reply.title);
+                                          setNewReplyText(reply.text);
+                                        }}
+                                        className="p-1.5 text-xs text-slate-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors font-bold cursor-pointer"
+                                        title="Editar"
+                                      >
+                                        ✏️
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          const filtered = quickReplies.filter(r => r.id !== reply.id);
+                                          saveQuickReplies(filtered);
+                                        }}
+                                        className="p-1.5 text-xs text-slate-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors font-bold cursor-pointer"
+                                        title="Excluir"
+                                      >
+                                        🗑️
+                                      </button>
+                                    </div>
+                                  </div>
+                                ))
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      )}
                     </>
                   ) : (
                     <div className="flex flex-col items-center justify-center h-full text-slate-400">
