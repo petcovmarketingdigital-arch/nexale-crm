@@ -831,19 +831,21 @@ app.post('/webhook/:companyId', async (req, res) => {
     try {
       const msgData = payload.data;
       if (!msgData || !msgData.key) return;
-      if (msgData.key.fromMe) return; 
       if (msgData.key.remoteJid && msgData.key.remoteJid.includes('@g.us')) return; 
 
+      const fromMe = !!msgData.key.fromMe;
       console.log('--- START PROCESS WEBHOOK ---');
       const phone = msgData.key.remoteJid.split('@')[0];
-      let pushName = msgData.pushName || 'Novo Contato (WhatsApp)';
+      let pushName = msgData.pushName || (fromMe ? 'Atendente' : 'Novo Contato (WhatsApp)');
 
-      // O companyId já foi extraído via req.params.companyId na linha 101
       const messageObj = msgData.message || {};
       const textContent = extractMessageText(messageObj);
 
+      if (!textContent) return;
+
       console.log(`CompanyId: ${companyId}`);
       console.log(`Phone: ${phone}`);
+      console.log(`FromMe: ${fromMe}`);
       console.log(`TextContent: ${textContent}`);
 
       console.log('Trace 1: Querying companies message_templates...');
@@ -868,13 +870,18 @@ app.post('/webhook/:companyId', async (req, res) => {
       if (existingLeads && existingLeads.length > 0) {
         const lead = existingLeads[0];
 
-        // 🟢 SEMPRE GRAVA A MENSAGEM DO CLIENTE NO HISTÓRICO DE NOTAS DO LEAD!
-        if (textContent) {
-          await supabaseAdmin.from('lead_notes').insert([{
-            lead_id: lead.id,
-            user_id: null,
-            nota: `[WA:in] Cliente: ${textContent}`
-          }]);
+        // 🟢 REGISTRA A MENSAGEM NO HISTÓRICO DE NOTAS DO LEAD (Seja enviada pelo celular ou pelo cliente!)
+        const notePrefix = fromMe ? '[WA:out] Atendente' : '[WA:in] Cliente';
+        await supabaseAdmin.from('lead_notes').insert([{
+          lead_id: lead.id,
+          user_id: null,
+          nota: `${notePrefix}: ${textContent}`
+        }]);
+
+        // Se a mensagem foi enviada pelo celular/WhatsApp do atendente, não dispara a IA!
+        if (fromMe) {
+          console.log(`✅ Mensagem enviada pelo celular (${phone}) gravada no histórico de chat do CRM.`);
+          return;
         }
 
         const aiEnabled = compData?.message_templates?.ai_enabled;
@@ -890,6 +897,9 @@ app.post('/webhook/:companyId', async (req, res) => {
         }
         return; 
       }
+
+      // Se for mensagem enviada por mim para um número que não é lead, ignora
+      if (fromMe) return;
 
       // Se o lead não existe no banco, só podemos cadastrar se ele enviou a frase gatilho!
       if (!triggerPhrase || triggerPhrase.trim() === '') {
