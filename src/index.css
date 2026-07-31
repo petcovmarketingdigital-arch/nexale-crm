@@ -72,10 +72,9 @@ input, textarea, select {
   min-height: 500px;
 }
 
-@media (min-width: 1024px) {
+@media (min-width: 768px) {
   .chat-container-mobile {
-    height: calc(100vh - 210px);
-    min-height: 560px;
+    height: 720px;
   }
 }
 

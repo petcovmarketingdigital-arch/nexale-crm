@@ -4463,10 +4463,10 @@ export default function App({ session }) {
 
             {/* Sub-tab 1: Central de Conversas (Live Chat) */}
             {waSubTab === 'chat' && (
-              <div className="chat-container-mobile bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden lg:grid lg:grid-cols-12">
+              <div className="chat-container-mobile bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden md:grid md:grid-cols-12">
                 {/* Coluna Esquerda: Lista de Conversas / Leads (4 cols) */}
-                <div className={`lg:col-span-4 border-r border-slate-100 flex flex-col bg-slate-50/50 min-h-0 h-full ${
-                  mobileChatView === 'chat' ? 'hidden lg:flex' : 'flex'
+                <div className={`md:col-span-4 border-r border-slate-100 flex flex-col bg-slate-50/50 min-h-0 h-full ${
+                  mobileChatView === 'chat' ? 'hidden md:flex' : 'flex'
                 }`}>
                   <div className="p-3 border-b border-slate-100 bg-white space-y-2">
                     <input
@@ -4633,8 +4633,8 @@ export default function App({ session }) {
                 </div>
 
                 {/* Coluna Central: Janela do Chat (8 cols) */}
-                <div className={`lg:col-span-8 flex flex-col bg-slate-100/40 min-h-0 relative h-full ${
-                  mobileChatView === 'chat' ? 'flex slide-in-right' : 'hidden lg:flex'
+                <div className={`md:col-span-8 flex flex-col bg-slate-100/40 min-h-0 relative h-full ${
+                  mobileChatView === 'chat' ? 'flex slide-in-right' : 'hidden md:flex'
                 }`}>
                   {activeLead ? (
                     <>
@@ -4643,7 +4643,7 @@ export default function App({ session }) {
                         <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
                           {/* Botão Voltar (mobile only) */}
                           <button
-                            className="lg:hidden flex items-center justify-center w-8 h-8 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 shrink-0 transition-colors cursor-pointer"
+                            className="md:hidden flex items-center justify-center w-8 h-8 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 shrink-0 transition-colors cursor-pointer"
                             onClick={() => setMobileChatView('list')}
                             title="Voltar"
                           >
