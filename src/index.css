@@ -64,7 +64,7 @@ input, textarea, select {
   background: #cbd5e1;
 }
 
-/* ===== CHAT MOBILE ===== */
+/* ===== CHAT CONTAINER ===== */
 .chat-container-mobile {
   display: flex;
   flex-direction: column;
@@ -74,7 +74,8 @@ input, textarea, select {
 
 @media (min-width: 1024px) {
   .chat-container-mobile {
-    height: 720px;
+    height: calc(100vh - 210px);
+    min-height: 560px;
   }
 }
 

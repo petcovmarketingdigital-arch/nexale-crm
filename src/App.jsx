@@ -4483,7 +4483,7 @@ export default function App({ session }) {
                           <select
                             value={selectedEtiquetaFilter}
                             onChange={e => setSelectedEtiquetaFilter(e.target.value)}
-                            className="bg-slate-100 border border-slate-200 text-slate-700 font-semibold text-[11px] rounded-lg px-2 py-1 outline-none focus:border-emerald-500 cursor-pointer max-w-[130px] truncate"
+                            className="bg-slate-100 border border-slate-200 text-slate-700 font-semibold text-[11px] rounded-lg px-2 py-1 outline-none focus:border-emerald-500 cursor-pointer max-w-[120px] truncate"
                           >
                             <option value="all">Todas as etiquetas</option>
                             {etiquetas.map(et => (
@@ -4493,10 +4493,10 @@ export default function App({ session }) {
                           <button
                             type="button"
                             onClick={() => setShowManageEtiquetasModal(true)}
-                            className="p-1 text-slate-400 hover:text-indigo-600 hover:bg-slate-200 rounded-lg transition-colors cursor-pointer"
-                            title="Gerenciar / Criar Etiquetas"
+                            className="px-2 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 text-[10px] font-black rounded-lg transition-colors cursor-pointer flex items-center gap-1"
+                            title="Criar / Editar Etiquetas"
                           >
-                            ⚙️
+                            <span>⚙️ Criar</span>
                           </button>
                         </div>
                       </div>
@@ -4691,10 +4691,23 @@ export default function App({ session }) {
                             {/* Menu Popover de Etiquetas */}
                             {showEtiquetaPopover && (
                               <div className="absolute right-0 top-10 bg-white border border-slate-200 rounded-2xl shadow-xl p-3 w-64 z-50 animate-fade-in">
-                                <h4 className="font-bold text-xs text-slate-800 mb-2 border-b border-slate-100 pb-1 flex items-center justify-between">
-                                  <span>🏷️ Gerenciar Etiquetas</span>
-                                  <button onClick={() => setShowEtiquetaPopover(false)} className="text-slate-400 hover:text-slate-600 text-xs">✕</button>
-                                </h4>
+                                <div className="flex items-center justify-between border-b border-slate-100 pb-2 mb-2">
+                                  <span className="font-extrabold text-xs text-slate-800">🏷️ Aplicar Etiqueta</span>
+                                  <button onClick={() => setShowEtiquetaPopover(false)} className="text-slate-400 hover:text-slate-600 text-xs font-bold">✕</button>
+                                </div>
+
+                                {/* BOTÃO PROMINENTE PARA CRIAR / EDITAR ETIQUETAS */}
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setShowEtiquetaPopover(false);
+                                    setShowManageEtiquetasModal(true);
+                                  }}
+                                  className="w-full mb-2 bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-700 hover:to-indigo-800 text-white text-xs font-black py-2 px-3 rounded-xl transition-all shadow-md shadow-indigo-600/20 cursor-pointer flex items-center justify-center gap-1.5"
+                                >
+                                  <span>⚙️ Criar / Editar Etiquetas</span>
+                                </button>
+
                                 <div className="space-y-1.5 max-h-48 overflow-y-auto minimal-scrollbar">
                                   {etiquetas.map(et => {
                                     const activeTags = activeLead.dados_nicho?.etiquetas || [];
@@ -4704,7 +4717,7 @@ export default function App({ session }) {
                                         key={et.id}
                                         type="button"
                                         onClick={() => handleToggleLeadEtiqueta(activeLead, et.id)}
-                                        className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-xl text-xs font-bold border text-left transition-all cursor-pointer ${et.color} ${isChecked ? 'ring-2 ring-emerald-500 font-extrabold' : 'opacity-80 hover:opacity-100'}`}
+                                        className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-xl text-xs font-bold border text-left transition-all cursor-pointer ${et.color} ${isChecked ? 'ring-2 ring-emerald-500 font-extrabold shadow-xs' : 'opacity-85 hover:opacity-100'}`}
                                       >
                                         <span>{et.name}</span>
                                         <span>{isChecked ? '✓' : '+'}</span>
@@ -4723,7 +4736,7 @@ export default function App({ session }) {
                         <div className="bg-slate-50 px-4 py-1.5 border-b border-slate-100 flex items-center gap-1.5 flex-wrap shrink-0">
                           <span className="text-[10px] font-bold text-slate-400">Etiquetas:</span>
                           {(activeLead.dados_nicho?.etiquetas || []).map(tagId => {
-                            const et = DEFAULT_ETIQUETAS.find(e => e.id === tagId);
+                            const et = etiquetas.find(e => e.id === tagId);
                             if (!et) return null;
                             return (
                               <span key={tagId} className={`text-[10px] font-bold px-2 py-0.5 rounded-lg border flex items-center gap-1 ${et.color}`}>
