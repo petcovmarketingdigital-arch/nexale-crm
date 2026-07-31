@@ -7,8 +7,29 @@
 body {
   margin: 0;
   font-family: var(--font-sans);
+  -webkit-tap-highlight-color: transparent;
+  overscroll-behavior: none;
 }
 
+/* ===== MOBILE SAFE AREA ===== */
+.safe-pb {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+.safe-pt {
+  padding-top: env(safe-area-inset-top, 0px);
+}
+
+/* ===== TOUCH OPTIMIZATION ===== */
+button, a, [role="button"] {
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+input, textarea, select {
+  font-size: 16px; /* prevents zoom on iOS */
+}
+
+/* ===== SCROLLBARS ===== */
 .minimal-scrollbar::-webkit-scrollbar {
   width: 7px;
   height: 7px;
@@ -43,6 +64,34 @@ body {
   background: #cbd5e1;
 }
 
+/* ===== CHAT MOBILE ===== */
+.chat-container-mobile {
+  display: flex;
+  flex-direction: column;
+  height: calc(100dvh - 140px);
+  min-height: 500px;
+}
+
+@media (min-width: 1024px) {
+  .chat-container-mobile {
+    height: 720px;
+  }
+}
+
+/* Slide animation para telas de chat mobile */
+@keyframes slideInRight {
+  from { transform: translateX(100%); opacity: 0; }
+  to   { transform: translateX(0);    opacity: 1; }
+}
+@keyframes slideOutRight {
+  from { transform: translateX(0);    opacity: 1; }
+  to   { transform: translateX(100%); opacity: 0; }
+}
+.slide-in-right {
+  animation: slideInRight 0.22s cubic-bezier(0.25, 0.46, 0.45, 0.94) both;
+}
+
+/* ===== ANIMATIONS ===== */
 @keyframes confettiFall {
   0% {
     transform: translateY(0) rotate(0deg);
@@ -69,4 +118,23 @@ body {
 
 .animate-bounce-slow {
   animation: bounceSlow 2s ease-in-out infinite;
+}
+
+/* ===== MOBILE NAV BOTTOM BAR ===== */
+@media (max-width: 767px) {
+  /* Evita que teclado virtual suba o layout */
+  .mobile-chat-input-area {
+    position: sticky;
+    bottom: 0;
+    bottom: env(safe-area-inset-bottom, 0px);
+  }
+}
+
+/* ===== KANBAN MOBILE SNAP ===== */
+.kanban-scroll {
+  scroll-snap-type: x mandatory;
+  -webkit-overflow-scrolling: touch;
+}
+.kanban-col-snap {
+  scroll-snap-align: start;
 }

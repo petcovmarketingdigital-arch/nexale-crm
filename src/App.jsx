@@ -379,6 +379,7 @@ export default function App({ session }) {
   // Live Chat Inbox WhatsApp
   const [waSubTab, setWaSubTab] = useState('chat');
   const [selectedChatLead, setSelectedChatLead] = useState(null);
+  const [mobileChatView, setMobileChatView] = useState('list'); // 'list' | 'chat' — mobile only
   const [chatMessages, setChatMessages] = useState([]);
   const [chatInputText, setChatInputText] = useState('');
   const [isSendingChatMessage, setIsSendingChatMessage] = useState(false);
@@ -2798,7 +2799,7 @@ export default function App({ session }) {
   }
 
   return (
-    <div className="p-6 bg-slate-50 min-h-screen font-sans">
+    <div className="p-2 sm:p-4 lg:p-6 bg-slate-50 min-h-screen font-sans">
       {/* Banner de Atualização PWA */}
       {needRefresh && (
         <div className="mb-6 bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 text-white px-4 py-3 rounded-xl text-center text-xs md:text-sm font-bold flex flex-col md:flex-row items-center justify-center gap-3 shadow-lg z-[9999] relative animate-bounce border border-indigo-500">
@@ -2872,49 +2873,49 @@ export default function App({ session }) {
           </div>
 
           {/* Centro: Menu Principal (Navegação em Abas) */}
-          <nav className="flex items-center bg-slate-100/80 p-1 rounded-xl gap-1 overflow-x-auto max-w-full minimal-scrollbar">
+          <nav className="flex items-center bg-slate-100/80 p-1 rounded-xl gap-0.5 overflow-x-auto max-w-full minimal-scrollbar w-full lg:w-auto">
             <button
               onClick={() => setCurrentView('kanban')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shrink-0 ${currentView === 'kanban' ? 'bg-white text-indigo-600 shadow-xs font-black' : 'text-slate-600 hover:text-slate-900'}`}
+              className={`px-2 py-2 sm:px-3 sm:py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1 cursor-pointer shrink-0 ${currentView === 'kanban' ? 'bg-white text-indigo-600 shadow-xs font-black' : 'text-slate-600 hover:text-slate-900'}`}
             >
-              📋 Funil Kanban
+              <span>📋</span><span className="hidden sm:inline">Funil</span><span className="hidden md:inline"> Kanban</span>
             </button>
             <button
               onClick={() => setCurrentView('dashboard')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shrink-0 ${currentView === 'dashboard' ? 'bg-white text-indigo-600 shadow-xs font-black' : 'text-slate-600 hover:text-slate-900'}`}
+              className={`px-2 py-2 sm:px-3 sm:py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1 cursor-pointer shrink-0 ${currentView === 'dashboard' ? 'bg-white text-indigo-600 shadow-xs font-black' : 'text-slate-600 hover:text-slate-900'}`}
             >
-              📊 Relatórios
+              <span>📊</span><span className="hidden sm:inline">Relatórios</span>
             </button>
             <button
               onClick={() => setCurrentView('whatsapp')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shrink-0 ${currentView === 'whatsapp' ? 'bg-emerald-500 text-white shadow-xs font-black' : 'text-emerald-700 hover:text-emerald-800'}`}
+              className={`px-2 py-2 sm:px-3 sm:py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1 cursor-pointer shrink-0 ${currentView === 'whatsapp' ? 'bg-emerald-500 text-white shadow-xs font-black' : 'text-emerald-700 hover:text-emerald-800'}`}
             >
-              💬 WhatsApp
+              <span>💬</span><span className="hidden sm:inline">WhatsApp</span>
             </button>
             <button
               onClick={() => setCurrentView('campanha')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shrink-0 ${currentView === 'campanha' ? 'bg-orange-500 text-white shadow-xs font-black' : 'text-orange-600 hover:text-orange-700'}`}
+              className={`px-2 py-2 sm:px-3 sm:py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1 cursor-pointer shrink-0 ${currentView === 'campanha' ? 'bg-orange-500 text-white shadow-xs font-black' : 'text-orange-600 hover:text-orange-700'}`}
             >
-              🚀 Campanhas
+              <span>🚀</span><span className="hidden sm:inline">Campanhas</span>
             </button>
             <button
               onClick={() => setCurrentView('ai_config')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shrink-0 ${currentView === 'ai_config' ? 'bg-indigo-600 text-white shadow-xs font-black' : 'text-indigo-600 hover:text-indigo-700'}`}
+              className={`px-2 py-2 sm:px-3 sm:py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1 cursor-pointer shrink-0 ${currentView === 'ai_config' ? 'bg-indigo-600 text-white shadow-xs font-black' : 'text-indigo-600 hover:text-indigo-700'}`}
             >
-              ⚙️ Configurações / IA
+              <span>⚙️</span><span className="hidden sm:inline">Config</span><span className="hidden lg:inline"> / IA</span>
             </button>
             <button
               onClick={() => setCurrentView('tutorials')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shrink-0 ${currentView === 'tutorials' ? 'bg-indigo-600 text-white shadow-xs font-black' : 'text-slate-600 hover:text-slate-900'}`}
+              className={`px-2 py-2 sm:px-3 sm:py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1 cursor-pointer shrink-0 ${currentView === 'tutorials' ? 'bg-indigo-600 text-white shadow-xs font-black' : 'text-slate-600 hover:text-slate-900'}`}
             >
-              🎥 Tutoriais
+              <span>🎥</span><span className="hidden sm:inline">Tutoriais</span>
             </button>
             {userRole === 'superadmin' && (
               <button
                 onClick={() => setCurrentView('superadmin')}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shrink-0 ${currentView === 'superadmin' ? 'bg-black text-white shadow-xs font-black' : 'text-slate-600 hover:text-slate-900'}`}
+                className={`px-2 py-2 sm:px-3 sm:py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1 cursor-pointer shrink-0 ${currentView === 'superadmin' ? 'bg-black text-white shadow-xs font-black' : 'text-slate-600 hover:text-slate-900'}`}
               >
-                👑 Painel Master
+                <span>👑</span><span className="hidden sm:inline">Master</span>
               </button>
             )}
           </nav>
@@ -4394,26 +4395,26 @@ export default function App({ session }) {
           <div className="max-w-7xl mx-auto mt-4 space-y-4 animate-fade-in px-2">
             {/* Top Navigation for WhatsApp Sub-tabs */}
             <div className="flex items-center justify-between bg-white p-3 rounded-2xl shadow-sm border border-slate-100">
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1.5 sm:gap-2">
                 <button
                   onClick={() => setWaSubTab('chat')}
-                  className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
+                  className={`px-2.5 py-2 sm:px-4 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
                     waSubTab === 'chat'
                       ? 'bg-emerald-600 text-white shadow-md shadow-emerald-600/20 font-black'
                       : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
                   }`}
                 >
-                  <span>💬 Central de Conversas (Live Chat)</span>
+                  <span>💬</span><span className="hidden sm:inline">Central de Conversas</span><span className="sm:hidden">Chat</span>
                 </button>
                 <button
                   onClick={() => setWaSubTab('connection')}
-                  className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
+                  className={`px-2.5 py-2 sm:px-4 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
                     waSubTab === 'connection'
                       ? 'bg-emerald-600 text-white shadow-md shadow-emerald-600/20 font-black'
                       : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
                   }`}
                 >
-                  <span>🔌 Status / QR Code Conexão</span>
+                  <span>🔌</span><span className="hidden sm:inline">Status / QR Code Conexão</span><span className="sm:hidden">Conexão</span>
                   {waConnected && <span className="w-2 h-2 rounded-full bg-green-400 animate-pulse"></span>}
                 </button>
               </div>
@@ -4427,9 +4428,11 @@ export default function App({ session }) {
 
             {/* Sub-tab 1: Central de Conversas (Live Chat) */}
             {waSubTab === 'chat' && (
-              <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 h-[720px] bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+              <div className="chat-container-mobile bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden lg:grid lg:grid-cols-12">
                 {/* Coluna Esquerda: Lista de Conversas / Leads (4 cols) */}
-                <div className="lg:col-span-4 border-r border-slate-100 flex flex-col h-full bg-slate-50/50 min-h-0">
+                <div className={`lg:col-span-4 border-r border-slate-100 flex flex-col bg-slate-50/50 min-h-0 h-full ${
+                  mobileChatView === 'chat' ? 'hidden lg:flex' : 'flex'
+                }`}>
                   <div className="p-3 border-b border-slate-100 bg-white space-y-2">
                     <input
                       type="text"
@@ -4534,6 +4537,7 @@ export default function App({ session }) {
                             onClick={() => {
                               setSelectedChatLead(card);
                               markLeadAsRead(card.id);
+                              setMobileChatView('chat');
                             }}
                             className={`p-3 flex items-center gap-3 cursor-pointer transition-all ${
                               card.isSelected ? 'bg-emerald-50/80 border-l-4 border-emerald-600' : 'hover:bg-slate-100/80'
@@ -4584,20 +4588,32 @@ export default function App({ session }) {
                 </div>
 
                 {/* Coluna Central: Janela do Chat (8 cols) */}
-                <div className="lg:col-span-8 flex flex-col h-full bg-slate-100/40 min-h-0 relative">
+                <div className={`lg:col-span-8 flex flex-col bg-slate-100/40 min-h-0 relative h-full ${
+                  mobileChatView === 'chat' ? 'flex slide-in-right' : 'hidden lg:flex'
+                }`}>
                   {activeLead ? (
                     <>
                       {/* Header da Conversa Ativa */}
-                      <div className="p-3.5 bg-white border-b border-slate-100 flex items-center justify-between shrink-0 relative">
-                        <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 rounded-full bg-emerald-600 text-white font-bold text-sm flex items-center justify-center shadow-xs">
+                      <div className="p-3 sm:p-3.5 bg-white border-b border-slate-100 flex items-center justify-between shrink-0 relative">
+                        <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
+                          {/* Botão Voltar (mobile only) */}
+                          <button
+                            className="lg:hidden flex items-center justify-center w-8 h-8 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 shrink-0 transition-colors cursor-pointer"
+                            onClick={() => setMobileChatView('list')}
+                            title="Voltar"
+                          >
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15 19l-7-7 7-7" />
+                            </svg>
+                          </button>
+                          <div className="w-9 h-9 rounded-full bg-emerald-600 text-white font-bold text-sm flex items-center justify-center shadow-xs shrink-0">
                             {(activeLead.contato || activeLead.empresa || 'C').charAt(0).toUpperCase()}
                           </div>
-                          <div>
-                            <h3 className="font-bold text-slate-800 text-sm leading-tight flex items-center gap-2">
-                              <span>{activeLead.empresa || activeLead.contato}</span>
+                          <div className="min-w-0 flex-1">
+                            <h3 className="font-bold text-slate-800 text-sm leading-tight truncate">
+                              {activeLead.empresa || activeLead.contato}
                             </h3>
-                            <p className="text-[11px] text-slate-500 font-semibold">{activeLead.contato} • {activeLead.telefone}</p>
+                            <p className="text-[11px] text-slate-500 font-semibold truncate">{activeLead.contato} • {activeLead.telefone}</p>
                           </div>
                         </div>
 
@@ -4613,7 +4629,8 @@ export default function App({ session }) {
                             }`}
                             title="Alternar IA para este lead"
                           >
-                            <span>{activeLead.ai_paused ? '⏸️ IA Pausada (Atendente Humano)' : '🤖 IA Ativa (Respondendo)'}</span>
+                            <span className="sm:hidden">{activeLead.ai_paused ? '⏸️ IA' : '🤖 IA'}</span>
+                            <span className="hidden sm:inline">{activeLead.ai_paused ? '⏸️ IA Pausada (Atendente Humano)' : '🤖 IA Ativa (Respondendo)'}</span>
                           </button>
 
                           {/* Botão de Popover de Etiquetas */}
@@ -4621,9 +4638,9 @@ export default function App({ session }) {
                             <button
                               type="button"
                               onClick={() => setShowEtiquetaPopover(!showEtiquetaPopover)}
-                              className="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold border border-slate-200 flex items-center gap-1.5 cursor-pointer"
+                              className="px-2 py-1.5 sm:px-3 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold border border-slate-200 flex items-center gap-1 cursor-pointer"
                             >
-                              <span>🏷️ Etiquetas</span>
+                              <span>🏷️</span><span className="hidden sm:inline">Etiquetas</span>
                             </button>
 
                             {/* Menu Popover de Etiquetas */}
@@ -5368,10 +5385,11 @@ export default function App({ session }) {
       )}
 
       {showModal && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-fade-in">
-          <div className={`bg-white rounded-2xl shadow-2xl flex flex-col md:flex-row w-full max-h-[90vh] overflow-hidden ${editingCardId ? 'max-w-5xl' : 'max-w-md'}`}>
-            
-            <div className={`p-6 overflow-y-auto ${editingCardId ? 'w-full md:w-1/2 border-r border-slate-100' : 'w-full'}`}>
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4 z-50 animate-fade-in">
+          <div className={`bg-white rounded-t-3xl sm:rounded-2xl shadow-2xl flex flex-col md:flex-row w-full max-h-[92vh] sm:max-h-[90vh] overflow-hidden ${editingCardId ? 'md:max-w-5xl' : 'sm:max-w-md'}`}>
+            {/* Drag indicator para mobile */}
+            <div className="sm:hidden w-10 h-1 bg-slate-300 rounded-full mx-auto mt-3 mb-1 shrink-0" />
+            <div className={`p-4 sm:p-6 overflow-y-auto ${editingCardId ? 'w-full md:w-1/2 border-r border-slate-100' : 'w-full'}`}>
               <div className="flex justify-between items-center mb-6">
                 <h3 className="text-xl font-black text-slate-800">{editingCardId ? 'Detalhes da Oportunidade' : 'Cadastrar Novo Lead'}</h3>
                 {!editingCardId && (
@@ -6389,8 +6407,8 @@ export default function App({ session }) {
       {waPanel && (
         <div
           style={{
-            position: 'fixed', bottom: '24px', right: '24px', zIndex: 9999,
-            width: '320px',
+            position: 'fixed', bottom: '16px', right: '16px', zIndex: 9999,
+            width: 'min(320px, calc(100vw - 32px))',
             background: 'linear-gradient(135deg, #0d1117 0%, #161b22 100%)',
             borderRadius: '20px',
             boxShadow: '0 25px 60px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.08)',
