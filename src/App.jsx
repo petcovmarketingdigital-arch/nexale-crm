@@ -397,6 +397,227 @@ export default function App({ session }) {
   const [newReplyTitle, setNewReplyTitle] = useState('');
   const [newReplyText, setNewReplyText] = useState('');
 
+  // Propostas & Orçamentos em PDF
+  const [showProposalModal, setShowProposalModal] = useState(false);
+  const [proposalLead, setProposalLead] = useState(null);
+  const [proposalTitle, setProposalTitle] = useState('Proposta Comercial / Orçamento');
+  const [proposalDiscount, setProposalDiscount] = useState(0);
+  const [proposalNotes, setProposalNotes] = useState('Proposta válida por 10 dias. Pagamento: 50% na aprovação + 50% na entrega. Dúvidas, estamos à disposição!');
+  const [proposalItems, setProposalItems] = useState([
+    { id: 'item_1', description: 'Serviço / Produto Principal', qty: 1, unitPrice: 0 }
+  ]);
+
+  const openProposalModal = (lead) => {
+    setProposalLead(lead);
+    const initialPrice = lead.valor || 0;
+    setProposalItems([
+      { id: 'item_1', description: lead.observacao ? `Serviço/Produto: ${lead.observacao}` : 'Serviço / Produto Principal', qty: 1, unitPrice: initialPrice }
+    ]);
+    setProposalDiscount(0);
+    setShowProposalModal(true);
+  };
+
+  const handleAddProposalItem = () => {
+    setProposalItems(prev => [
+      ...prev,
+      { id: `item_${Date.now()}`, description: '', qty: 1, unitPrice: 0 }
+    ]);
+  };
+
+  const handleRemoveProposalItem = (itemId) => {
+    if (proposalItems.length <= 1) return;
+    setProposalItems(prev => prev.filter(i => i.id !== itemId));
+  };
+
+  const handleUpdateProposalItem = (itemId, field, value) => {
+    setProposalItems(prev => prev.map(item => {
+      if (item.id === itemId) {
+        return { ...item, [field]: field === 'description' ? value : Number(value) || 0 };
+      }
+      return item;
+    }));
+  };
+
+  const calculateProposalSubtotal = () => {
+    return proposalItems.reduce((acc, item) => acc + ((Number(item.qty) || 0) * (Number(item.unitPrice) || 0)), 0);
+  };
+
+  const calculateProposalTotal = () => {
+    const subtotal = calculateProposalSubtotal();
+    const discount = Number(proposalDiscount) || 0;
+    return Math.max(0, subtotal - discount);
+  };
+
+  const handleSendProposalWhatsApp = async () => {
+    if (!proposalLead) return;
+    const total = calculateProposalTotal();
+    const subtotal = calculateProposalSubtotal();
+
+    let msg = `📄 *${proposalTitle.toUpperCase()}*\n`;
+    msg += `👤 *Cliente:* ${proposalLead.empresa || proposalLead.contato}\n`;
+    msg += `📅 *Data:* ${new Date().toLocaleDateString('pt-BR')}\n`;
+    msg += `-----------------------------------\n`;
+    msg += `*ITENS / SERVIÇOS:*\n`;
+
+    proposalItems.forEach((item, idx) => {
+      const itemSubtotal = (Number(item.qty) || 0) * (Number(item.unitPrice) || 0);
+      msg += `${idx + 1}. *${item.description || 'Item'}*\n`;
+      msg += `   Qtd: ${item.qty} | Valor un: R$ ${item.unitPrice.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} ➔ *Subtotal: R$ ${itemSubtotal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}*\n`;
+    });
+
+    msg += `-----------------------------------\n`;
+    if (proposalDiscount > 0) {
+      msg += `Subtotal: R$ ${subtotal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}\n`;
+      msg += `Desconto: - R$ ${proposalDiscount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}\n`;
+    }
+    msg += `💰 *VALOR TOTAL: R$ ${total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}*\n\n`;
+    msg += `📌 *Condições / Observações:*\n${proposalNotes}\n\n`;
+    msg += `Qualquer dúvida sobre a proposta, estou à disposição!`;
+
+    if (total > 0) {
+      await supabase.from('leads').update({ valor: total, ai_paused: true }).eq('id', proposalLead.id);
+    }
+
+    const { error } = await supabase.from('lead_notes').insert([{
+      lead_id: proposalLead.id,
+      user_id: session.user.id,
+      nota: `[WA:out] ${msg}`
+    }]);
+
+    if (!error) {
+      setShowProposalModal(false);
+      fetchNotes(proposalLead.id);
+      fetchLeads();
+      alert('📄 Proposta gerada e enviada com sucesso no chat!');
+    } else {
+      alert('Erro ao enviar proposta: ' + error.message);
+    }
+  };
+
+  const handlePrintProposalPDF = () => {
+    const total = calculateProposalTotal();
+    const subtotal = calculateProposalSubtotal();
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) {
+      alert('Por favor, permita popups para gerar o PDF da proposta.');
+      return;
+    }
+
+    const itemsRows = proposalItems.map((item, idx) => {
+      const itemSubtotal = (Number(item.qty) || 0) * (Number(item.unitPrice) || 0);
+      return `
+        <tr>
+          <td style="padding:10px; border-bottom:1px solid #e2e8f0; font-size:13px;">${idx + 1}</td>
+          <td style="padding:10px; border-bottom:1px solid #e2e8f0; font-size:13px; font-weight:600;">${item.description || 'Item'}</td>
+          <td style="padding:10px; border-bottom:1px solid #e2e8f0; font-size:13px; text-align:center;">${item.qty}</td>
+          <td style="padding:10px; border-bottom:1px solid #e2e8f0; font-size:13px; text-align:right;">R$ ${Number(item.unitPrice).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
+          <td style="padding:10px; border-bottom:1px solid #e2e8f0; font-size:13px; text-align:right; font-weight:700;">R$ ${itemSubtotal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
+        </tr>
+      `;
+    }).join('');
+
+    const htmlContent = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>Proposta Comercial - ${proposalLead?.empresa || proposalLead?.contato}</title>
+        <style>
+          body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; color: #1e293b; padding: 40px; background: #fff; }
+          .header { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #4f46e5; padding-bottom: 20px; margin-bottom: 30px; }
+          .logo-text { font-size: 24px; font-weight: 900; color: #4f46e5; }
+          .proposal-title { font-size: 18px; font-weight: 800; color: #1e293b; text-transform: uppercase; text-align: right; }
+          .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 30px; background: #f8fafc; padding: 20px; border-radius: 12px; border: 1px solid #e2e8f0; }
+          .info-block h4 { margin: 0 0 6px 0; font-size: 11px; text-transform: uppercase; color: #64748b; font-weight: 800; }
+          .info-block p { margin: 0; font-size: 14px; font-weight: 700; color: #0f172a; }
+          table { width: 100%; border-collapse: collapse; margin-bottom: 30px; }
+          th { background: #4f46e5; color: white; padding: 12px; text-align: left; font-size: 12px; font-weight: 800; text-transform: uppercase; }
+          .total-box { background: #eef2ff; border: 1px solid #c7d2fe; border-radius: 12px; padding: 20px; text-align: right; margin-bottom: 30px; }
+          .total-amount { font-size: 22px; font-weight: 900; color: #4338ca; }
+          .terms-box { background: #f8fafc; border-left: 4px solid #4f46e5; padding: 16px; border-radius: 0 12px 12px 0; margin-bottom: 40px; }
+          .signatures { display: flex; justify-content: space-between; margin-top: 60px; }
+          .sig-line { width: 45%; border-top: 1px solid #94a3b8; text-align: center; padding-top: 8px; font-size: 12px; font-weight: 700; color: #475569; }
+          @media print { body { padding: 0; } }
+        </style>
+      </head>
+      <body>
+        <div class="header">
+          <div>
+            ${companyLogoUrl ? `<img src="${companyLogoUrl}" style="max-height:50px; margin-bottom:8px;" />` : `<div class="logo-text">NEXALE CRM</div>`}
+            <div style="font-size:12px; color:#64748b; font-weight:600;">Proposta de Serviços & Orçamento</div>
+          </div>
+          <div class="proposal-title">
+            ${proposalTitle}<br/>
+            <span style="font-size:12px; color:#64748b; font-weight:500;">Emissão: ${new Date().toLocaleDateString('pt-BR')}</span>
+          </div>
+        </div>
+
+        <div class="info-grid">
+          <div class="info-block">
+            <h4>Cliente / Empresa:</h4>
+            <p>${proposalLead?.empresa || 'Não informado'}</p>
+            <p style="font-weight:500; font-size:13px; margin-top:4px;">Contato: ${proposalLead?.contato || '-'}</p>
+            <p style="font-weight:500; font-size:13px;">Fone: ${proposalLead?.telefone || '-'}</p>
+          </div>
+          <div class="info-block" style="text-align:right;">
+            <h4>Referência / Código:</h4>
+            <p>Orçamento #${proposalLead?.id ? String(proposalLead.id).slice(0, 8) : '001'}</p>
+            <p style="font-weight:500; font-size:13px; margin-top:4px;">Vendedor: ${session?.user?.email || 'Representante Comercial'}</p>
+          </div>
+        </div>
+
+        <table>
+          <thead>
+            <tr>
+              <th style="width:40px;">#</th>
+              <th>Descrição do Item / Serviço</th>
+              <th style="width:80px; text-align:center;">Qtd</th>
+              <th style="width:130px; text-align:right;">Valor Unit.</th>
+              <th style="width:140px; text-align:right;">Subtotal</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${itemsRows}
+          </tbody>
+        </table>
+
+        <div class="total-box">
+          <div style="font-size:13px; color:#475569; margin-bottom:4px;">Subtotal: <strong>R$ ${subtotal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</strong></div>
+          ${proposalDiscount > 0 ? `<div style="font-size:13px; color:#dc2626; margin-bottom:4px;">Desconto Aplicado: - <strong>R$ ${Number(proposalDiscount).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</strong></div>` : ''}
+          <div style="font-size:13px; font-weight:700; color:#1e293b; margin-top:6px;">VALOR TOTAL DA PROPOSTA:</div>
+          <div class="total-amount">R$ ${total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</div>
+        </div>
+
+        <div class="terms-box">
+          <h4 style="margin:0 0 6px 0; font-size:12px; text-transform:uppercase; color:#4338ca;">Condições de Pagamento & Termos:</h4>
+          <p style="margin:0; font-size:12px; line-height:1.6; color:#334155; white-space:pre-wrap;">${proposalNotes}</p>
+        </div>
+
+        <div class="signatures">
+          <div class="sig-line">
+            ${companyNiche || 'Empresa Prestadora'}<br/>
+            <span style="font-size:10px; font-weight:normal; color:#94a3b8;">Representante Comercial</span>
+          </div>
+          <div class="sig-line">
+            ${proposalLead?.empresa || proposalLead?.contato}<br/>
+            <span style="font-size:10px; font-weight:normal; color:#94a3b8;">De acordo / Aceite do Cliente</span>
+          </div>
+        </div>
+
+        <script>
+          window.onload = function() {
+            setTimeout(function() {
+              window.print();
+            }, 400);
+          };
+        </script>
+      </body>
+      </html>
+    `;
+
+    printWindow.document.write(htmlContent);
+    printWindow.document.close();
+  };
+
   const [quickReplies, setQuickReplies] = useState(() => {
     try {
       const saved = localStorage.getItem('nexale_quick_replies');
@@ -3480,18 +3701,27 @@ export default function App({ session }) {
                             <div className="flex items-center gap-1">
                               <span className="opacity-70">📞</span> {card.telefone}
                             </div>
-                            {card.telefone && card.telefone !== 'Não informado' && (
-                              <button
-                                onClick={() => {
-                                  setSelectedChatLead(card);
-                                  setWaSubTab('chat');
-                                  setCurrentView('whatsapp');
-                                }}
-                                className="mt-2 w-full bg-green-50 hover:bg-green-100 text-green-700 border border-green-200 text-xs font-bold py-1.5 px-3 rounded-lg transition-all flex items-center justify-center gap-2 cursor-pointer"
-                              >
-                                <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" fill="currentColor" viewBox="0 0 16 16"><path d="M13.601 2.326A7.85 7.85 0 0 0 7.994 0C3.627 0 .068 3.558.064 7.926c0 1.399.366 2.76 1.057 3.965L0 16l4.204-1.102a7.9 7.9 0 0 0 3.79.965h.004c4.368 0 7.926-3.558 7.93-7.93A7.9 7.9 0 0 0 13.6 2.326zM7.994 14.521a6.6 6.6 0 0 1-3.356-.92l-.24-.144-2.494.654.666-2.433-.156-.251a6.56 6.56 0 0 1-1.007-3.505c0-3.626 2.957-6.584 6.591-6.584a6.56 6.56 0 0 1 4.66 1.931 6.56 6.56 0 0 1 1.928 4.66c-.004 3.639-2.961 6.592-6.592 6.592m3.615-4.934c-.197-.099-1.17-.578-1.353-.646-.182-.065-.315-.099-.445.099-.133.197-.513.646-.627.775-.114.133-.232.148-.43.05-.197-.1-.836-.308-1.592-.985-.59-.525-.985-1.175-1.103-1.372-.114-.198-.011-.304.088-.403.087-.088.197-.232.296-.346.1-.114.133-.198.198-.33.065-.134.034-.248-.015-.347-.05-.099-.445-1.076-.612-1.47-.16-.389-.323-.335-.445-.34-.114-.007-.247-.007-.38-.007a.73.73 0 0 0-.529.247c-.182.198-.691.677-.691 1.654s.71 1.916.81 2.049c.098.133 1.394 2.132 3.383 2.992.47.205.84.326 1.129.418.475.152.904.129 1.246.08.38-.058 1.171-.48 1.338-.943.164-.464.164-.86.114-.943-.049-.084-.182-.133-.38-.232"/></svg>
-                                Falar no WhatsApp
-                              </button>
+                             {card.telefone && card.telefone !== 'Não informado' && (
+                              <div className="space-y-1 mt-2">
+                                <button
+                                  onClick={() => {
+                                    setSelectedChatLead(card);
+                                    setWaSubTab('chat');
+                                    setCurrentView('whatsapp');
+                                  }}
+                                  className="w-full bg-green-50 hover:bg-green-100 text-green-700 border border-green-200 text-xs font-bold py-1.5 px-3 rounded-lg transition-all flex items-center justify-center gap-2 cursor-pointer"
+                                >
+                                  <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" fill="currentColor" viewBox="0 0 16 16"><path d="M13.601 2.326A7.85 7.85 0 0 0 7.994 0C3.627 0 .068 3.558.064 7.926c0 1.399.366 2.76 1.057 3.965L0 16l4.204-1.102a7.9 7.9 0 0 0 3.79.965h.004c4.368 0 7.926-3.558 7.93-7.93A7.9 7.9 0 0 0 13.6 2.326zM7.994 14.521a6.6 6.6 0 0 1-3.356-.92l-.24-.144-2.494.654.666-2.433-.156-.251a6.56 6.56 0 0 1-1.007-3.505c0-3.626 2.957-6.584 6.591-6.584a6.56 6.56 0 0 1 4.66 1.931 6.56 6.56 0 0 1 1.928 4.66c-.004 3.639-2.961 6.592-6.592 6.592m3.615-4.934c-.197-.099-1.17-.578-1.353-.646-.182-.065-.315-.099-.445.099-.133.197-.513.646-.627.775-.114.133-.232.148-.43.05-.197-.1-.836-.308-1.592-.985-.59-.525-.985-1.175-1.103-1.372-.114-.198-.011-.304.088-.403.087-.088.197-.232.296-.346.1-.114.133-.198.198-.33.065-.134.034-.248-.015-.347-.05-.099-.445-1.076-.612-1.47-.16-.389-.323-.335-.445-.34-.114-.007-.247-.007-.38-.007a.73.73 0 0 0-.529.247c-.182.198-.691.677-.691 1.654s.71 1.916.81 2.049c.098.133 1.394 2.132 3.383 2.992.47.205.84.326 1.129.418.475.152.904.129 1.246.08.38-.058 1.171-.48 1.338-.943.164-.464.164-.86.114-.943-.049-.084-.182-.133-.38-.232"/></svg>
+                                  Falar no WhatsApp
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => openProposalModal(card)}
+                                  className="w-full bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 text-xs font-bold py-1.5 px-3 rounded-lg transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-2xs"
+                                >
+                                  📄 Criar Proposta PDF
+                                </button>
+                              </div>
                             )}
                             {card.email && <p className="flex items-center gap-1 mt-1"><span className="opacity-70">✉️</span> {card.email.toLowerCase()}</p>}
                           </div>
@@ -4647,6 +4877,16 @@ export default function App({ session }) {
                         </div>
 
                         <div className="flex items-center gap-2 relative">
+                          {/* Botão Gerar Proposta Comercial PDF */}
+                          <button
+                            type="button"
+                            onClick={() => openProposalModal(activeLead)}
+                            className="px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-xs"
+                            title="Gerar Proposta Comercial / Orçamento em PDF"
+                          >
+                            <span>📄 Proposta PDF</span>
+                          </button>
+
                           {/* Alternador de Pausa da IA */}
                           <button
                             type="button"
@@ -5196,6 +5436,166 @@ export default function App({ session }) {
                                   </div>
                                 ))
                               )}
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Modal Gerador de Proposta e Orçamento Comercial em PDF */}
+                      {showProposalModal && proposalLead && (
+                        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fade-in">
+                          <div className="bg-slate-50 border border-slate-200 rounded-3xl shadow-2xl max-w-2xl w-full p-6 space-y-4 max-h-[92vh] overflow-y-auto minimal-scrollbar">
+                            {/* Top Header */}
+                            <div className="flex items-center justify-between border-b border-slate-200 pb-3">
+                              <div>
+                                <h3 className="font-extrabold text-base text-indigo-900 flex items-center gap-2">
+                                  <span>📄 Gerador de Proposta / Orçamento Comercial</span>
+                                </h3>
+                                <p className="text-xs text-slate-500 font-semibold mt-0.5">
+                                  Cliente: <span className="text-slate-800 font-bold">{proposalLead.empresa || proposalLead.contato}</span> ({proposalLead.telefone || 'Sem Fone'})
+                                </p>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => setShowProposalModal(false)}
+                                className="text-slate-400 hover:text-slate-600 text-base font-bold p-1 cursor-pointer"
+                              >
+                                ✕
+                              </button>
+                            </div>
+
+                            {/* Formulário Principal */}
+                            <div className="space-y-4">
+                              {/* Título da Proposta */}
+                              <div>
+                                <label className="block text-xs font-bold text-slate-700 mb-1">Título do Documento / Orçamento:</label>
+                                <input
+                                  type="text"
+                                  value={proposalTitle}
+                                  onChange={(e) => setProposalTitle(e.target.value)}
+                                  placeholder="Ex: Proposta Comercial de Instalação, Orçamento #104..."
+                                  className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 outline-none focus:border-indigo-500"
+                                />
+                              </div>
+
+                              {/* Tabela de Itens */}
+                              <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs space-y-3">
+                                <div className="flex items-center justify-between">
+                                  <h4 className="font-extrabold text-xs text-slate-800">Itens e Serviços Orçados:</h4>
+                                  <button
+                                    type="button"
+                                    onClick={handleAddProposalItem}
+                                    className="bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 text-xs font-bold px-2.5 py-1 rounded-lg cursor-pointer transition-colors"
+                                  >
+                                    ➕ Adicionar Item
+                                  </button>
+                                </div>
+
+                                <div className="space-y-2 max-h-56 overflow-y-auto minimal-scrollbar pr-1">
+                                  {proposalItems.map((item, idx) => {
+                                    return (
+                                      <div key={item.id} className="grid grid-cols-12 gap-2 items-center bg-slate-50 p-2.5 rounded-xl border border-slate-200">
+                                        <div className="col-span-6">
+                                          <label className="block text-[10px] font-bold text-slate-500">Descrição #{idx + 1}:</label>
+                                          <input
+                                            type="text"
+                                            placeholder="Ex: Aplicação de Resina Epóxi (m²), Mão de obra..."
+                                            value={item.description}
+                                            onChange={(e) => handleUpdateProposalItem(item.id, 'description', e.target.value)}
+                                            className="w-full bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs font-semibold outline-none focus:border-indigo-500"
+                                          />
+                                        </div>
+                                        <div className="col-span-2">
+                                          <label className="block text-[10px] font-bold text-slate-500">Qtd / m²:</label>
+                                          <input
+                                            type="number"
+                                            min="1"
+                                            value={item.qty}
+                                            onChange={(e) => handleUpdateProposalItem(item.id, 'qty', e.target.value)}
+                                            className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1.5 text-xs font-bold text-center outline-none focus:border-indigo-500"
+                                          />
+                                        </div>
+                                        <div className="col-span-3">
+                                          <label className="block text-[10px] font-bold text-slate-500">Valor Unit. (R$):</label>
+                                          <input
+                                            type="number"
+                                            min="0"
+                                            step="0.01"
+                                            value={item.unitPrice}
+                                            onChange={(e) => handleUpdateProposalItem(item.id, 'unitPrice', e.target.value)}
+                                            className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1.5 text-xs font-bold text-right outline-none focus:border-indigo-500"
+                                          />
+                                        </div>
+                                        <div className="col-span-1 flex items-center justify-center pt-3">
+                                          <button
+                                            type="button"
+                                            onClick={() => handleRemoveProposalItem(item.id)}
+                                            disabled={proposalItems.length <= 1}
+                                            className="text-slate-400 hover:text-red-600 disabled:opacity-30 font-bold p-1 cursor-pointer"
+                                            title="Remover Item"
+                                          >
+                                            🗑️
+                                          </button>
+                                        </div>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+
+                                {/* Resumo Financeiro da Proposta */}
+                                <div className="pt-2 border-t border-slate-100 space-y-2">
+                                  <div className="flex items-center justify-between text-xs font-semibold text-slate-600">
+                                    <span>Subtotal dos Itens:</span>
+                                    <span>R$ {calculateProposalSubtotal().toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
+                                  </div>
+                                  <div className="flex items-center justify-between text-xs">
+                                    <span className="font-bold text-slate-700">Desconto Especial (R$):</span>
+                                    <input
+                                      type="number"
+                                      min="0"
+                                      step="0.01"
+                                      value={proposalDiscount}
+                                      onChange={(e) => setProposalDiscount(Number(e.target.value) || 0)}
+                                      className="w-28 bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-xs font-bold text-right outline-none focus:border-indigo-500"
+                                    />
+                                  </div>
+                                  <div className="flex items-center justify-between text-sm font-black text-indigo-900 bg-indigo-50 p-2.5 rounded-xl border border-indigo-100">
+                                    <span>VALOR TOTAL FINAL:</span>
+                                    <span className="text-base text-indigo-700">R$ {calculateProposalTotal().toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
+                                  </div>
+                                </div>
+                              </div>
+
+                              {/* Condições de Pagamento e Observações */}
+                              <div>
+                                <label className="block text-xs font-bold text-slate-700 mb-1">Condições de Pagamento e Observações:</label>
+                                <textarea
+                                  rows={3}
+                                  value={proposalNotes}
+                                  onChange={(e) => setProposalNotes(e.target.value)}
+                                  className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-medium text-slate-700 outline-none focus:border-indigo-500 minimal-scrollbar"
+                                  placeholder="Condições, parcelamento, prazos e validade da proposta..."
+                                />
+                              </div>
+                            </div>
+
+                            {/* Botões de Ação */}
+                            <div className="flex items-center gap-3 pt-2 border-t border-slate-200">
+                              <button
+                                type="button"
+                                onClick={handlePrintProposalPDF}
+                                className="flex-1 bg-slate-800 hover:bg-slate-900 text-white text-xs font-bold py-2.5 px-3 rounded-xl transition-colors cursor-pointer flex items-center justify-center gap-2 shadow-xs"
+                              >
+                                <span>🖨️ Imprimir / Baixar PDF</span>
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={handleSendProposalWhatsApp}
+                                className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-extrabold py-2.5 px-3 rounded-xl transition-colors cursor-pointer flex items-center justify-center gap-2 shadow-sm shadow-emerald-600/20"
+                              >
+                                <span>📲 Enviar via WhatsApp</span>
+                              </button>
                             </div>
                           </div>
                         </div>
