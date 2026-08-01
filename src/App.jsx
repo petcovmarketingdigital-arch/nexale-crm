@@ -4683,9 +4683,9 @@ export default function App({ session }) {
                             <button
                               type="button"
                               onClick={() => setShowEtiquetaPopover(!showEtiquetaPopover)}
-                              className="px-2 py-1.5 sm:px-3 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold border border-slate-200 flex items-center gap-1 cursor-pointer"
+                              className="px-2.5 py-1.5 sm:px-3 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold border border-slate-200 flex items-center gap-1 cursor-pointer"
                             >
-                              <span>🏷️</span><span className="hidden sm:inline">Etiquetas</span>
+                              <span>🏷️</span><span className="hidden sm:inline">Etiquetas / Criar</span>
                             </button>
 
                             {/* Menu Popover de Etiquetas */}
