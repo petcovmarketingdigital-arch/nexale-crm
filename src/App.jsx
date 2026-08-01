@@ -379,7 +379,6 @@ export default function App({ session }) {
   // Live Chat Inbox WhatsApp
   const [waSubTab, setWaSubTab] = useState('chat');
   const [selectedChatLead, setSelectedChatLead] = useState(null);
-  const [mobileChatView, setMobileChatView] = useState('list'); // 'list' | 'chat' — mobile only
   const [chatMessages, setChatMessages] = useState([]);
   const [chatInputText, setChatInputText] = useState('');
   const [isSendingChatMessage, setIsSendingChatMessage] = useState(false);
@@ -388,12 +387,12 @@ export default function App({ session }) {
   const [selectedChatSellerFilter, setSelectedChatSellerFilter] = useState('all');
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [showEtiquetaPopover, setShowEtiquetaPopover] = useState(false);
+  const [showQuickRepliesPopover, setShowQuickRepliesPopover] = useState(false);
+  const [showManageQuickRepliesModal, setShowManageQuickRepliesModal] = useState(false);
   const [showManageEtiquetasModal, setShowManageEtiquetasModal] = useState(false);
   const [editingEtiqueta, setEditingEtiqueta] = useState(null);
   const [newEtiquetaName, setNewEtiquetaName] = useState('');
   const [newEtiquetaColorKey, setNewEtiquetaColorKey] = useState('emerald');
-  const [showQuickRepliesPopover, setShowQuickRepliesPopover] = useState(false);
-  const [showManageQuickRepliesModal, setShowManageQuickRepliesModal] = useState(false);
   const [editingReply, setEditingReply] = useState(null);
   const [newReplyTitle, setNewReplyTitle] = useState('');
   const [newReplyText, setNewReplyText] = useState('');
@@ -2834,7 +2833,7 @@ export default function App({ session }) {
   }
 
   return (
-    <div className="p-2 sm:p-4 lg:p-6 bg-slate-50 min-h-screen font-sans">
+    <div className="p-6 bg-slate-50 min-h-screen font-sans">
       {/* Banner de Atualização PWA */}
       {needRefresh && (
         <div className="mb-6 bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 text-white px-4 py-3 rounded-xl text-center text-xs md:text-sm font-bold flex flex-col md:flex-row items-center justify-center gap-3 shadow-lg z-[9999] relative animate-bounce border border-indigo-500">
@@ -2908,49 +2907,49 @@ export default function App({ session }) {
           </div>
 
           {/* Centro: Menu Principal (Navegação em Abas) */}
-          <nav className="flex items-center bg-slate-100/80 p-1 rounded-xl gap-0.5 overflow-x-auto max-w-full minimal-scrollbar w-full lg:w-auto">
+          <nav className="flex items-center bg-slate-100/80 p-1 rounded-xl gap-1 overflow-x-auto max-w-full minimal-scrollbar">
             <button
               onClick={() => setCurrentView('kanban')}
-              className={`px-2 py-2 sm:px-3 sm:py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1 cursor-pointer shrink-0 ${currentView === 'kanban' ? 'bg-white text-indigo-600 shadow-xs font-black' : 'text-slate-600 hover:text-slate-900'}`}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shrink-0 ${currentView === 'kanban' ? 'bg-white text-indigo-600 shadow-xs font-black' : 'text-slate-600 hover:text-slate-900'}`}
             >
-              <span>📋</span><span className="hidden sm:inline">Funil</span><span className="hidden md:inline"> Kanban</span>
+              📋 Funil Kanban
             </button>
             <button
               onClick={() => setCurrentView('dashboard')}
-              className={`px-2 py-2 sm:px-3 sm:py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1 cursor-pointer shrink-0 ${currentView === 'dashboard' ? 'bg-white text-indigo-600 shadow-xs font-black' : 'text-slate-600 hover:text-slate-900'}`}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shrink-0 ${currentView === 'dashboard' ? 'bg-white text-indigo-600 shadow-xs font-black' : 'text-slate-600 hover:text-slate-900'}`}
             >
-              <span>📊</span><span className="hidden sm:inline">Relatórios</span>
+              📊 Relatórios
             </button>
             <button
               onClick={() => setCurrentView('whatsapp')}
-              className={`px-2 py-2 sm:px-3 sm:py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1 cursor-pointer shrink-0 ${currentView === 'whatsapp' ? 'bg-emerald-500 text-white shadow-xs font-black' : 'text-emerald-700 hover:text-emerald-800'}`}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shrink-0 ${currentView === 'whatsapp' ? 'bg-emerald-500 text-white shadow-xs font-black' : 'text-emerald-700 hover:text-emerald-800'}`}
             >
-              <span>💬</span><span className="hidden sm:inline">WhatsApp</span>
+              💬 WhatsApp
             </button>
             <button
               onClick={() => setCurrentView('campanha')}
-              className={`px-2 py-2 sm:px-3 sm:py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1 cursor-pointer shrink-0 ${currentView === 'campanha' ? 'bg-orange-500 text-white shadow-xs font-black' : 'text-orange-600 hover:text-orange-700'}`}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shrink-0 ${currentView === 'campanha' ? 'bg-orange-500 text-white shadow-xs font-black' : 'text-orange-600 hover:text-orange-700'}`}
             >
-              <span>🚀</span><span className="hidden sm:inline">Campanhas</span>
+              🚀 Campanhas
             </button>
             <button
               onClick={() => setCurrentView('ai_config')}
-              className={`px-2 py-2 sm:px-3 sm:py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1 cursor-pointer shrink-0 ${currentView === 'ai_config' ? 'bg-indigo-600 text-white shadow-xs font-black' : 'text-indigo-600 hover:text-indigo-700'}`}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shrink-0 ${currentView === 'ai_config' ? 'bg-indigo-600 text-white shadow-xs font-black' : 'text-indigo-600 hover:text-indigo-700'}`}
             >
-              <span>⚙️</span><span className="hidden sm:inline">Config</span><span className="hidden lg:inline"> / IA</span>
+              ⚙️ Configurações / IA
             </button>
             <button
               onClick={() => setCurrentView('tutorials')}
-              className={`px-2 py-2 sm:px-3 sm:py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1 cursor-pointer shrink-0 ${currentView === 'tutorials' ? 'bg-indigo-600 text-white shadow-xs font-black' : 'text-slate-600 hover:text-slate-900'}`}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shrink-0 ${currentView === 'tutorials' ? 'bg-indigo-600 text-white shadow-xs font-black' : 'text-slate-600 hover:text-slate-900'}`}
             >
-              <span>🎥</span><span className="hidden sm:inline">Tutoriais</span>
+              🎥 Tutoriais
             </button>
             {userRole === 'superadmin' && (
               <button
                 onClick={() => setCurrentView('superadmin')}
-                className={`px-2 py-2 sm:px-3 sm:py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1 cursor-pointer shrink-0 ${currentView === 'superadmin' ? 'bg-black text-white shadow-xs font-black' : 'text-slate-600 hover:text-slate-900'}`}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shrink-0 ${currentView === 'superadmin' ? 'bg-black text-white shadow-xs font-black' : 'text-slate-600 hover:text-slate-900'}`}
               >
-                <span>👑</span><span className="hidden sm:inline">Master</span>
+                👑 Painel Master
               </button>
             )}
           </nav>
@@ -4430,26 +4429,26 @@ export default function App({ session }) {
           <div className="max-w-7xl mx-auto mt-4 space-y-4 animate-fade-in px-2">
             {/* Top Navigation for WhatsApp Sub-tabs */}
             <div className="flex items-center justify-between bg-white p-3 rounded-2xl shadow-sm border border-slate-100">
-              <div className="flex items-center gap-1.5 sm:gap-2">
+              <div className="flex items-center gap-2">
                 <button
                   onClick={() => setWaSubTab('chat')}
-                  className={`px-2.5 py-2 sm:px-4 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                  className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
                     waSubTab === 'chat'
                       ? 'bg-emerald-600 text-white shadow-md shadow-emerald-600/20 font-black'
                       : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
                   }`}
                 >
-                  <span>💬</span><span className="hidden sm:inline">Central de Conversas</span><span className="sm:hidden">Chat</span>
+                  <span>💬 Central de Conversas (Live Chat)</span>
                 </button>
                 <button
                   onClick={() => setWaSubTab('connection')}
-                  className={`px-2.5 py-2 sm:px-4 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                  className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
                     waSubTab === 'connection'
                       ? 'bg-emerald-600 text-white shadow-md shadow-emerald-600/20 font-black'
                       : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
                   }`}
                 >
-                  <span>🔌</span><span className="hidden sm:inline">Status / QR Code Conexão</span><span className="sm:hidden">Conexão</span>
+                  <span>🔌 Status / QR Code Conexão</span>
                   {waConnected && <span className="w-2 h-2 rounded-full bg-green-400 animate-pulse"></span>}
                 </button>
               </div>
@@ -4463,11 +4462,9 @@ export default function App({ session }) {
 
             {/* Sub-tab 1: Central de Conversas (Live Chat) */}
             {waSubTab === 'chat' && (
-              <div className="chat-container-mobile bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden md:grid md:grid-cols-12">
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 h-[720px] bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
                 {/* Coluna Esquerda: Lista de Conversas / Leads (4 cols) */}
-                <div className={`md:col-span-4 border-r border-slate-100 flex flex-col bg-slate-50/50 min-h-0 h-full ${
-                  mobileChatView === 'chat' ? 'hidden md:flex' : 'flex'
-                }`}>
+                <div className="lg:col-span-4 border-r border-slate-100 flex flex-col h-full bg-slate-50/50 min-h-0">
                   <div className="p-3 border-b border-slate-100 bg-white space-y-2">
                     <input
                       type="text"
@@ -4478,27 +4475,27 @@ export default function App({ session }) {
                     />
                     <div className="flex flex-col gap-1.5 pt-1 border-t border-slate-100">
                       <div className="flex items-center justify-between text-xs">
-                        <span className="text-[11px] font-bold text-slate-500 flex items-center gap-1">🏷️ Etiqueta:</span>
                         <div className="flex items-center gap-1">
-                          <select
-                            value={selectedEtiquetaFilter}
-                            onChange={e => setSelectedEtiquetaFilter(e.target.value)}
-                            className="bg-slate-100 border border-slate-200 text-slate-700 font-semibold text-[11px] rounded-lg px-2 py-1 outline-none focus:border-emerald-500 cursor-pointer max-w-[120px] truncate"
-                          >
-                            <option value="all">Todas as etiquetas</option>
-                            {etiquetas.map(et => (
-                              <option key={et.id} value={et.id}>{et.name}</option>
-                            ))}
-                          </select>
+                          <span className="text-[11px] font-bold text-slate-500">🏷️ Etiqueta:</span>
                           <button
                             type="button"
                             onClick={() => setShowManageEtiquetasModal(true)}
-                            className="px-2 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 text-[10px] font-black rounded-lg transition-colors cursor-pointer flex items-center gap-1"
-                            title="Criar / Editar Etiquetas"
+                            className="text-[10px] font-black text-indigo-600 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 px-1.5 py-0.5 rounded-md transition-colors cursor-pointer"
+                            title="Criar ou editar etiquetas"
                           >
-                            <span>⚙️ Criar</span>
+                            ⚙️ Criar
                           </button>
                         </div>
+                        <select
+                          value={selectedEtiquetaFilter}
+                          onChange={e => setSelectedEtiquetaFilter(e.target.value)}
+                          className="bg-slate-100 border border-slate-200 text-slate-700 font-semibold text-[11px] rounded-lg px-2 py-1 outline-none focus:border-emerald-500 cursor-pointer max-w-[140px] truncate"
+                        >
+                          <option value="all">Todas as etiquetas</option>
+                          {etiquetas.map(et => (
+                            <option key={et.id} value={et.id}>{et.name}</option>
+                          ))}
+                        </select>
                       </div>
                       {(userRole === 'admin' || userRole === 'superadmin') && teamMembers.length > 0 && (
                         <div className="flex items-center justify-between text-xs">
@@ -4582,7 +4579,6 @@ export default function App({ session }) {
                             onClick={() => {
                               setSelectedChatLead(card);
                               markLeadAsRead(card.id);
-                              setMobileChatView('chat');
                             }}
                             className={`p-3 flex items-center gap-3 cursor-pointer transition-all ${
                               card.isSelected ? 'bg-emerald-50/80 border-l-4 border-emerald-600' : 'hover:bg-slate-100/80'
@@ -4633,32 +4629,20 @@ export default function App({ session }) {
                 </div>
 
                 {/* Coluna Central: Janela do Chat (8 cols) */}
-                <div className={`md:col-span-8 flex flex-col bg-slate-100/40 min-h-0 relative h-full ${
-                  mobileChatView === 'chat' ? 'flex slide-in-right' : 'hidden md:flex'
-                }`}>
+                <div className="lg:col-span-8 flex flex-col h-full bg-slate-100/40 min-h-0 relative">
                   {activeLead ? (
                     <>
                       {/* Header da Conversa Ativa */}
-                      <div className="p-3 sm:p-3.5 bg-white border-b border-slate-100 flex items-center justify-between shrink-0 relative">
-                        <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
-                          {/* Botão Voltar (mobile only) */}
-                          <button
-                            className="md:hidden flex items-center justify-center w-8 h-8 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 shrink-0 transition-colors cursor-pointer"
-                            onClick={() => setMobileChatView('list')}
-                            title="Voltar"
-                          >
-                            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15 19l-7-7 7-7" />
-                            </svg>
-                          </button>
-                          <div className="w-9 h-9 rounded-full bg-emerald-600 text-white font-bold text-sm flex items-center justify-center shadow-xs shrink-0">
+                      <div className="p-3.5 bg-white border-b border-slate-100 flex items-center justify-between shrink-0 relative">
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-full bg-emerald-600 text-white font-bold text-sm flex items-center justify-center shadow-xs">
                             {(activeLead.contato || activeLead.empresa || 'C').charAt(0).toUpperCase()}
                           </div>
-                          <div className="min-w-0 flex-1">
-                            <h3 className="font-bold text-slate-800 text-sm leading-tight truncate">
-                              {activeLead.empresa || activeLead.contato}
+                          <div>
+                            <h3 className="font-bold text-slate-800 text-sm leading-tight flex items-center gap-2">
+                              <span>{activeLead.empresa || activeLead.contato}</span>
                             </h3>
-                            <p className="text-[11px] text-slate-500 font-semibold truncate">{activeLead.contato} • {activeLead.telefone}</p>
+                            <p className="text-[11px] text-slate-500 font-semibold">{activeLead.contato} • {activeLead.telefone}</p>
                           </div>
                         </div>
 
@@ -4674,8 +4658,7 @@ export default function App({ session }) {
                             }`}
                             title="Alternar IA para este lead"
                           >
-                            <span className="sm:hidden">{activeLead.ai_paused ? '⏸️ IA' : '🤖 IA'}</span>
-                            <span className="hidden sm:inline">{activeLead.ai_paused ? '⏸️ IA Pausada (Atendente Humano)' : '🤖 IA Ativa (Respondendo)'}</span>
+                            <span>{activeLead.ai_paused ? '⏸️ IA Pausada (Atendente Humano)' : '🤖 IA Ativa (Respondendo)'}</span>
                           </button>
 
                           {/* Botão de Popover de Etiquetas */}
@@ -4683,20 +4666,19 @@ export default function App({ session }) {
                             <button
                               type="button"
                               onClick={() => setShowEtiquetaPopover(!showEtiquetaPopover)}
-                              className="px-2.5 py-1.5 sm:px-3 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold border border-slate-200 flex items-center gap-1 cursor-pointer"
+                              className="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold border border-slate-200 flex items-center gap-1.5 cursor-pointer"
                             >
-                              <span>🏷️</span><span className="hidden sm:inline">Etiquetas / Criar</span>
+                              <span>🏷️ Etiquetas</span>
                             </button>
 
                             {/* Menu Popover de Etiquetas */}
                             {showEtiquetaPopover && (
                               <div className="absolute right-0 top-10 bg-white border border-slate-200 rounded-2xl shadow-xl p-3 w-64 z-50 animate-fade-in">
-                                <div className="flex items-center justify-between border-b border-slate-100 pb-2 mb-2">
-                                  <span className="font-extrabold text-xs text-slate-800">🏷️ Aplicar Etiqueta</span>
-                                  <button onClick={() => setShowEtiquetaPopover(false)} className="text-slate-400 hover:text-slate-600 text-xs font-bold">✕</button>
-                                </div>
+                                <h4 className="font-bold text-xs text-slate-800 mb-2 border-b border-slate-100 pb-1 flex items-center justify-between">
+                                  <span>🏷️ Aplicar Etiqueta</span>
+                                  <button onClick={() => setShowEtiquetaPopover(false)} className="text-slate-400 hover:text-slate-600 text-xs">✕</button>
+                                </h4>
 
-                                {/* BOTÃO PROMINENTE PARA CRIAR / EDITAR ETIQUETAS */}
                                 <button
                                   type="button"
                                   onClick={() => {
@@ -4717,7 +4699,7 @@ export default function App({ session }) {
                                         key={et.id}
                                         type="button"
                                         onClick={() => handleToggleLeadEtiqueta(activeLead, et.id)}
-                                        className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-xl text-xs font-bold border text-left transition-all cursor-pointer ${et.color} ${isChecked ? 'ring-2 ring-emerald-500 font-extrabold shadow-xs' : 'opacity-85 hover:opacity-100'}`}
+                                        className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-xl text-xs font-bold border text-left transition-all cursor-pointer ${et.color} ${isChecked ? 'ring-2 ring-emerald-500 font-extrabold' : 'opacity-80 hover:opacity-100'}`}
                                       >
                                         <span>{et.name}</span>
                                         <span>{isChecked ? '✓' : '+'}</span>
@@ -5047,62 +5029,66 @@ export default function App({ session }) {
 
                       {/* Modal de Gerenciamento de Etiquetas (Custom Tags) */}
                       {showManageEtiquetasModal && (
-                        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-[999] animate-fade-in">
-                          <div className="bg-white rounded-3xl shadow-2xl max-w-lg w-full p-6 space-y-4 border border-slate-100">
-                            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-                              <h3 className="font-extrabold text-base text-slate-800 flex items-center gap-2">
+                        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fade-in">
+                          <div className="bg-slate-50 border border-slate-200 rounded-3xl shadow-2xl max-w-md w-full p-5 space-y-4 max-h-[90vh] overflow-y-auto minimal-scrollbar">
+                            <div className="flex items-center justify-between border-b border-slate-200 pb-3">
+                              <h3 className="font-extrabold text-sm text-slate-800 flex items-center gap-2">
                                 <span>🏷️ Gerenciar Etiquetas (Tags)</span>
                               </h3>
                               <button
+                                type="button"
                                 onClick={() => {
                                   setShowManageEtiquetasModal(false);
                                   setEditingEtiqueta(null);
                                   setNewEtiquetaName('');
                                   setNewEtiquetaColorKey('emerald');
                                 }}
-                                className="text-slate-400 hover:text-slate-600 font-bold text-lg cursor-pointer"
+                                className="text-slate-400 hover:text-slate-600 text-sm font-bold p-1 cursor-pointer"
                               >
                                 ✕
                               </button>
                             </div>
 
-                            {/* Form de Criação / Edição */}
-                            <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200/80 space-y-3">
-                              <h4 className="font-bold text-xs text-slate-700">
-                                {editingEtiqueta ? '✏️ Editar Etiqueta' : '➕ Criar Nova Etiqueta'}
+                            {/* Formulário de Adicionar / Editar */}
+                            <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs space-y-3">
+                              <h4 className="font-bold text-xs text-indigo-900 flex items-center gap-1.5">
+                                <span>{editingEtiqueta ? '✏️ Editar Etiqueta' : '➕ Criar Nova Etiqueta'}</span>
                               </h4>
-                              <input
-                                type="text"
-                                placeholder="Nome da Etiqueta (ex: Reunião Agendada, Interessado, Orçamento)"
-                                value={newEtiquetaName}
-                                onChange={e => setNewEtiquetaName(e.target.value)}
-                                className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-medium outline-none focus:border-indigo-500"
-                              />
                               
                               <div>
-                                <label className="block text-[11px] font-bold text-slate-500 mb-1.5">Escolha a Cor da Etiqueta:</label>
-                                <div className="grid grid-cols-2 sm:grid-cols-5 gap-1.5">
-                                  {ETIQUETA_COLOR_OPTIONS.map(c => {
-                                    const isSelected = newEtiquetaColorKey === c.id;
+                                <label className="block text-[11px] font-bold text-slate-600 mb-1">Nome da Etiqueta:</label>
+                                <input
+                                  type="text"
+                                  placeholder="Ex: Visita Agendada, Orçamento..."
+                                  value={newEtiquetaName}
+                                  onChange={(e) => setNewEtiquetaName(e.target.value)}
+                                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs outline-none focus:border-indigo-500 font-medium"
+                                />
+                              </div>
+
+                              <div>
+                                <label className="block text-[11px] font-bold text-slate-600 mb-1">Cor da Etiqueta:</label>
+                                <div className="grid grid-cols-5 gap-1.5">
+                                  {ETIQUETA_COLOR_OPTIONS.map((opt) => {
+                                    const isSelected = newEtiquetaColorKey === opt.id;
                                     return (
                                       <button
-                                        key={c.id}
+                                        key={opt.id}
                                         type="button"
-                                        onClick={() => setNewEtiquetaColorKey(c.id)}
-                                        className={`p-1.5 rounded-xl border text-[10px] font-bold truncate flex items-center justify-center gap-1 cursor-pointer transition-all ${c.color} ${
-                                          isSelected ? 'ring-2 ring-indigo-600 font-black scale-105 shadow-xs' : 'opacity-80 hover:opacity-100'
+                                        onClick={() => setNewEtiquetaColorKey(opt.id)}
+                                        className={`p-2 rounded-xl border flex flex-col items-center justify-center gap-1 transition-all cursor-pointer ${opt.color} ${
+                                          isSelected ? 'ring-2 ring-indigo-600 font-extrabold shadow-sm scale-105' : 'opacity-70 hover:opacity-100'
                                         }`}
-                                        title={c.label}
+                                        title={opt.label}
                                       >
-                                        <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: c.dot }}></span>
-                                        <span className="truncate">{c.label.split(' ')[0]}</span>
+                                        <span className="w-3 h-3 rounded-full shadow-xs" style={{ backgroundColor: opt.dot }} />
                                       </button>
                                     );
                                   })}
                                 </div>
                               </div>
 
-                              <div className="flex justify-end gap-2 pt-1">
+                              <div className="flex items-center gap-2 pt-1">
                                 {editingEtiqueta && (
                                   <button
                                     type="button"
@@ -5111,42 +5097,46 @@ export default function App({ session }) {
                                       setNewEtiquetaName('');
                                       setNewEtiquetaColorKey('emerald');
                                     }}
-                                    className="px-3 py-1.5 rounded-xl text-xs font-bold bg-slate-200 text-slate-700 hover:bg-slate-300 cursor-pointer"
+                                    className="px-3 py-2 text-xs font-bold text-slate-500 hover:bg-slate-100 rounded-xl cursor-pointer"
                                   >
-                                    Cancelar Edição
+                                    Cancelar
                                   </button>
                                 )}
                                 <button
                                   type="button"
                                   onClick={() => {
-                                    if (!newEtiquetaName.trim()) return;
-                                    const colorPreset = ETIQUETA_COLOR_OPTIONS.find(c => c.id === newEtiquetaColorKey) || ETIQUETA_COLOR_OPTIONS[0];
+                                    if (!newEtiquetaName.trim()) {
+                                      alert('Digite um nome para a etiqueta.');
+                                      return;
+                                    }
+                                    const colorOption = ETIQUETA_COLOR_OPTIONS.find(o => o.id === newEtiquetaColorKey) || ETIQUETA_COLOR_OPTIONS[0];
+
                                     if (editingEtiqueta) {
                                       const updated = etiquetas.map(item => item.id === editingEtiqueta.id ? {
                                         ...item,
                                         name: newEtiquetaName.trim(),
-                                        color: colorPreset.color,
-                                        dot: colorPreset.dot,
-                                        badgeColor: colorPreset.badgeColor,
-                                        colorKey: colorPreset.id
+                                        color: colorOption.color,
+                                        dot: colorOption.dot,
+                                        badgeColor: colorOption.badgeColor,
+                                        colorKey: colorOption.id
                                       } : item);
                                       saveEtiquetas(updated);
                                       setEditingEtiqueta(null);
                                     } else {
                                       const newItem = {
-                                        id: 'etq_' + Date.now(),
+                                        id: `etq_${Date.now()}`,
                                         name: newEtiquetaName.trim(),
-                                        color: colorPreset.color,
-                                        dot: colorPreset.dot,
-                                        badgeColor: colorPreset.badgeColor,
-                                        colorKey: colorPreset.id
+                                        color: colorOption.color,
+                                        dot: colorOption.dot,
+                                        badgeColor: colorOption.badgeColor,
+                                        colorKey: colorOption.id
                                       };
                                       saveEtiquetas([...etiquetas, newItem]);
                                     }
                                     setNewEtiquetaName('');
                                     setNewEtiquetaColorKey('emerald');
                                   }}
-                                  className="px-4 py-1.5 rounded-xl text-xs font-bold bg-indigo-600 text-white hover:bg-indigo-700 shadow-sm shadow-indigo-600/20 cursor-pointer"
+                                  className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold py-2 rounded-xl transition-colors cursor-pointer shadow-xs"
                                 >
                                   {editingEtiqueta ? 'Salvar Alteração' : '➕ Salvar Nova Etiqueta'}
                                 </button>
@@ -5154,7 +5144,7 @@ export default function App({ session }) {
                             </div>
 
                             {/* Lista de Etiquetas Existentes */}
-                            <div className="space-y-2 max-h-60 overflow-y-auto minimal-scrollbar">
+                            <div className="space-y-2">
                               <div className="flex items-center justify-between">
                                 <h4 className="font-bold text-xs text-slate-500">Etiquetas Cadastradas ({etiquetas.length}):</h4>
                                 <button
@@ -5164,22 +5154,21 @@ export default function App({ session }) {
                                       saveEtiquetas(INITIAL_DEFAULT_ETIQUETAS);
                                     }
                                   }}
-                                  className="text-[10px] font-bold text-slate-400 hover:text-indigo-600 cursor-pointer"
+                                  className="text-[10px] font-bold text-slate-400 hover:text-slate-600 underline cursor-pointer"
                                 >
-                                  🔄 Restaurar Padrão
+                                  Restaurar Padrão
                                 </button>
                               </div>
+
                               {etiquetas.length === 0 ? (
-                                <p className="text-xs text-slate-400 text-center py-4">Nenhuma etiqueta cadastrada ainda.</p>
+                                <p className="text-xs text-slate-400 text-center py-4">Nenhuma etiqueta cadastrada.</p>
                               ) : (
-                                etiquetas.map(et => (
-                                  <div key={et.id} className="flex items-center justify-between p-2.5 bg-slate-50 rounded-xl border border-slate-200/60 hover:bg-slate-100/80 transition-colors">
-                                    <div className="flex items-center gap-2">
-                                      <span className={`text-xs font-bold px-2.5 py-0.5 rounded-lg border ${et.color}`}>
-                                        {et.name}
-                                      </span>
-                                    </div>
-                                    <div className="flex items-center gap-1">
+                                etiquetas.map((et) => (
+                                  <div key={et.id} className="p-2.5 bg-white border border-slate-200 rounded-2xl flex items-center justify-between gap-2 hover:border-slate-300 transition-all">
+                                    <span className={`text-xs font-bold px-2.5 py-1 rounded-lg border ${et.color}`}>
+                                      {et.name}
+                                    </span>
+                                    <div className="flex items-center gap-1 shrink-0">
                                       <button
                                         type="button"
                                         onClick={() => {
@@ -5187,27 +5176,21 @@ export default function App({ session }) {
                                           setNewEtiquetaName(et.name);
                                           setNewEtiquetaColorKey(et.colorKey || 'emerald');
                                         }}
-                                        className="p-1 text-slate-500 hover:text-indigo-600 rounded-lg hover:bg-white text-xs font-bold cursor-pointer"
-                                        title="Editar Etiqueta"
+                                        className="p-1.5 text-xs text-slate-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors font-bold cursor-pointer"
+                                        title="Editar"
                                       >
-                                        ✏️ Editar
+                                        ✏️
                                       </button>
                                       <button
                                         type="button"
                                         onClick={() => {
-                                          if (window.confirm(`Tem certeza que deseja excluir a etiqueta "${et.name}"?`)) {
-                                            const filtered = etiquetas.filter(item => item.id !== et.id);
-                                            saveEtiquetas(filtered);
-                                            if (editingEtiqueta && editingEtiqueta.id === et.id) {
-                                              setEditingEtiqueta(null);
-                                              setNewEtiquetaName('');
-                                            }
-                                          }
+                                          const filtered = etiquetas.filter(item => item.id !== et.id);
+                                          saveEtiquetas(filtered);
                                         }}
-                                        className="p-1 text-slate-500 hover:text-red-600 rounded-lg hover:bg-white text-xs font-bold cursor-pointer"
-                                        title="Excluir Etiqueta"
+                                        className="p-1.5 text-xs text-slate-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors font-bold cursor-pointer"
+                                        title="Excluir"
                                       >
-                                        🗑️ Excluir
+                                        🗑️
                                       </button>
                                     </div>
                                   </div>
@@ -5616,11 +5599,10 @@ export default function App({ session }) {
       )}
 
       {showModal && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4 z-50 animate-fade-in">
-          <div className={`bg-white rounded-t-3xl sm:rounded-2xl shadow-2xl flex flex-col md:flex-row w-full max-h-[92vh] sm:max-h-[90vh] overflow-hidden ${editingCardId ? 'md:max-w-5xl' : 'sm:max-w-md'}`}>
-            {/* Drag indicator para mobile */}
-            <div className="sm:hidden w-10 h-1 bg-slate-300 rounded-full mx-auto mt-3 mb-1 shrink-0" />
-            <div className={`p-4 sm:p-6 overflow-y-auto ${editingCardId ? 'w-full md:w-1/2 border-r border-slate-100' : 'w-full'}`}>
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-fade-in">
+          <div className={`bg-white rounded-2xl shadow-2xl flex flex-col md:flex-row w-full max-h-[90vh] overflow-hidden ${editingCardId ? 'max-w-5xl' : 'max-w-md'}`}>
+            
+            <div className={`p-6 overflow-y-auto ${editingCardId ? 'w-full md:w-1/2 border-r border-slate-100' : 'w-full'}`}>
               <div className="flex justify-between items-center mb-6">
                 <h3 className="text-xl font-black text-slate-800">{editingCardId ? 'Detalhes da Oportunidade' : 'Cadastrar Novo Lead'}</h3>
                 {!editingCardId && (
@@ -6638,8 +6620,8 @@ export default function App({ session }) {
       {waPanel && (
         <div
           style={{
-            position: 'fixed', bottom: '16px', right: '16px', zIndex: 9999,
-            width: 'min(320px, calc(100vw - 32px))',
+            position: 'fixed', bottom: '24px', right: '24px', zIndex: 9999,
+            width: '320px',
             background: 'linear-gradient(135deg, #0d1117 0%, #161b22 100%)',
             borderRadius: '20px',
             boxShadow: '0 25px 60px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.08)',
