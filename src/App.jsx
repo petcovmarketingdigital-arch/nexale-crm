@@ -389,6 +389,10 @@ export default function App({ session }) {
   const [showEtiquetaPopover, setShowEtiquetaPopover] = useState(false);
   const [showQuickRepliesPopover, setShowQuickRepliesPopover] = useState(false);
   const [showManageQuickRepliesModal, setShowManageQuickRepliesModal] = useState(false);
+  const [showManageEtiquetasModal, setShowManageEtiquetasModal] = useState(false);
+  const [editingEtiqueta, setEditingEtiqueta] = useState(null);
+  const [newEtiquetaName, setNewEtiquetaName] = useState('');
+  const [newEtiquetaColorKey, setNewEtiquetaColorKey] = useState('emerald');
   const [editingReply, setEditingReply] = useState(null);
   const [newReplyTitle, setNewReplyTitle] = useState('');
   const [newReplyText, setNewReplyText] = useState('');
@@ -473,14 +477,45 @@ export default function App({ session }) {
     }
   };
 
-  const DEFAULT_ETIQUETAS = [
-    { id: 'novo', name: 'Novo Lead', color: 'bg-emerald-100 text-emerald-800 border-emerald-300', dot: '#10b981', badgeColor: 'bg-emerald-500 text-white' },
-    { id: 'atendimento', name: 'Em Atendimento', color: 'bg-amber-100 text-amber-800 border-amber-300', dot: '#f59e0b', badgeColor: 'bg-amber-500 text-white' },
-    { id: 'proposta', name: 'Proposta Enviada', color: 'bg-blue-100 text-blue-800 border-blue-300', dot: '#3b82f6', badgeColor: 'bg-blue-500 text-white' },
-    { id: 'pagamento', name: 'Aguardando Pgto', color: 'bg-purple-100 text-purple-800 border-purple-300', dot: '#a855f7', badgeColor: 'bg-purple-500 text-white' },
-    { id: 'fechado', name: 'Cliente Fechado', color: 'bg-green-100 text-green-800 border-green-300', dot: '#16a34a', badgeColor: 'bg-green-600 text-white' },
-    { id: 'urgente', name: 'Urgente / VIP', color: 'bg-red-100 text-red-800 border-red-300', dot: '#ef4444', badgeColor: 'bg-red-500 text-white' }
+  const ETIQUETA_COLOR_OPTIONS = [
+    { id: 'emerald', label: 'Verde Esmeralda', color: 'bg-emerald-100 text-emerald-800 border-emerald-300', dot: '#10b981', badgeColor: 'bg-emerald-500 text-white' },
+    { id: 'amber', label: 'Amarelo Âmbar', color: 'bg-amber-100 text-amber-800 border-amber-300', dot: '#f59e0b', badgeColor: 'bg-amber-500 text-white' },
+    { id: 'blue', label: 'Azul Celeste', color: 'bg-blue-100 text-blue-800 border-blue-300', dot: '#3b82f6', badgeColor: 'bg-blue-500 text-white' },
+    { id: 'purple', label: 'Roxo Violeta', color: 'bg-purple-100 text-purple-800 border-purple-300', dot: '#a855f7', badgeColor: 'bg-purple-500 text-white' },
+    { id: 'green', label: 'Verde Escuro', color: 'bg-green-100 text-green-800 border-green-300', dot: '#16a34a', badgeColor: 'bg-green-600 text-white' },
+    { id: 'red', label: 'Vermelho Urgente', color: 'bg-red-100 text-red-800 border-red-300', dot: '#ef4444', badgeColor: 'bg-red-500 text-white' },
+    { id: 'pink', label: 'Rosa Pink', color: 'bg-pink-100 text-pink-800 border-pink-300', dot: '#ec4899', badgeColor: 'bg-pink-500 text-white' },
+    { id: 'orange', label: 'Laranja Vibrante', color: 'bg-orange-100 text-orange-800 border-orange-300', dot: '#f97316', badgeColor: 'bg-orange-500 text-white' },
+    { id: 'cyan', label: 'Turquesa Ciano', color: 'bg-cyan-100 text-cyan-800 border-cyan-300', dot: '#06b6d4', badgeColor: 'bg-cyan-500 text-white' },
+    { id: 'slate', label: 'Cinza Elegante', color: 'bg-slate-200 text-slate-800 border-slate-300', dot: '#64748b', badgeColor: 'bg-slate-600 text-white' },
   ];
+
+  const INITIAL_DEFAULT_ETIQUETAS = [
+    { id: 'novo', name: 'Novo Lead', color: 'bg-emerald-100 text-emerald-800 border-emerald-300', dot: '#10b981', badgeColor: 'bg-emerald-500 text-white', colorKey: 'emerald' },
+    { id: 'atendimento', name: 'Em Atendimento', color: 'bg-amber-100 text-amber-800 border-amber-300', dot: '#f59e0b', badgeColor: 'bg-amber-500 text-white', colorKey: 'amber' },
+    { id: 'proposta', name: 'Proposta Enviada', color: 'bg-blue-100 text-blue-800 border-blue-300', dot: '#3b82f6', badgeColor: 'bg-blue-500 text-white', colorKey: 'blue' },
+    { id: 'pagamento', name: 'Aguardando Pgto', color: 'bg-purple-100 text-purple-800 border-purple-300', dot: '#a855f7', badgeColor: 'bg-purple-500 text-white', colorKey: 'purple' },
+    { id: 'fechado', name: 'Cliente Fechado', color: 'bg-green-100 text-green-800 border-green-300', dot: '#16a34a', badgeColor: 'bg-green-600 text-white', colorKey: 'green' },
+    { id: 'urgente', name: 'Urgente / VIP', color: 'bg-red-100 text-red-800 border-red-300', dot: '#ef4444', badgeColor: 'bg-red-500 text-white', colorKey: 'red' }
+  ];
+
+  const [etiquetas, setEtiquetas] = useState(() => {
+    try {
+      const saved = localStorage.getItem('nexale_custom_etiquetas');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch (e) {}
+    return INITIAL_DEFAULT_ETIQUETAS;
+  });
+
+  const saveEtiquetas = (newEtiquetas) => {
+    setEtiquetas(newEtiquetas);
+    try {
+      localStorage.setItem('nexale_custom_etiquetas', JSON.stringify(newEtiquetas));
+    } catch (e) {}
+  };
 
   const DEFAULT_QUICK_REPLIES = [
     { title: '👋 Boas-vindas', text: 'Olá! Seja muito bem-vindo(a). Como posso te ajudar hoje?' },
@@ -4440,14 +4475,24 @@ export default function App({ session }) {
                     />
                     <div className="flex flex-col gap-1.5 pt-1 border-t border-slate-100">
                       <div className="flex items-center justify-between text-xs">
-                        <span className="text-[11px] font-bold text-slate-500">🏷️ Etiqueta:</span>
+                        <div className="flex items-center gap-1">
+                          <span className="text-[11px] font-bold text-slate-500">🏷️ Etiqueta:</span>
+                          <button
+                            type="button"
+                            onClick={() => setShowManageEtiquetasModal(true)}
+                            className="text-[10px] font-black text-indigo-600 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 px-1.5 py-0.5 rounded-md transition-colors cursor-pointer"
+                            title="Criar ou editar etiquetas"
+                          >
+                            ⚙️ Criar
+                          </button>
+                        </div>
                         <select
                           value={selectedEtiquetaFilter}
                           onChange={e => setSelectedEtiquetaFilter(e.target.value)}
-                          className="bg-slate-100 border border-slate-200 text-slate-700 font-semibold text-[11px] rounded-lg px-2 py-1 outline-none focus:border-emerald-500 cursor-pointer max-w-[160px] truncate"
+                          className="bg-slate-100 border border-slate-200 text-slate-700 font-semibold text-[11px] rounded-lg px-2 py-1 outline-none focus:border-emerald-500 cursor-pointer max-w-[140px] truncate"
                         >
                           <option value="all">Todas as etiquetas</option>
-                          {DEFAULT_ETIQUETAS.map(et => (
+                          {etiquetas.map(et => (
                             <option key={et.id} value={et.id}>{et.name}</option>
                           ))}
                         </select>
@@ -4566,7 +4611,7 @@ export default function App({ session }) {
                               {cardEtiquetas.length > 0 && (
                                 <div className="flex items-center gap-1 flex-wrap">
                                   {cardEtiquetas.map(tagId => {
-                                    const et = DEFAULT_ETIQUETAS.find(e => e.id === tagId);
+                                    const et = etiquetas.find(e => e.id === tagId);
                                     if (!et) return null;
                                     return (
                                       <span key={tagId} className={`text-[9px] font-bold px-1.5 py-0.5 rounded-md border ${et.color}`}>
@@ -4630,11 +4675,23 @@ export default function App({ session }) {
                             {showEtiquetaPopover && (
                               <div className="absolute right-0 top-10 bg-white border border-slate-200 rounded-2xl shadow-xl p-3 w-64 z-50 animate-fade-in">
                                 <h4 className="font-bold text-xs text-slate-800 mb-2 border-b border-slate-100 pb-1 flex items-center justify-between">
-                                  <span>🏷️ Gerenciar Etiquetas</span>
+                                  <span>🏷️ Aplicar Etiqueta</span>
                                   <button onClick={() => setShowEtiquetaPopover(false)} className="text-slate-400 hover:text-slate-600 text-xs">✕</button>
                                 </h4>
-                                <div className="space-y-1.5">
-                                  {DEFAULT_ETIQUETAS.map(et => {
+
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setShowEtiquetaPopover(false);
+                                    setShowManageEtiquetasModal(true);
+                                  }}
+                                  className="w-full mb-2 bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-700 hover:to-indigo-800 text-white text-xs font-black py-2 px-3 rounded-xl transition-all shadow-md shadow-indigo-600/20 cursor-pointer flex items-center justify-center gap-1.5"
+                                >
+                                  <span>⚙️ Criar / Editar Etiquetas</span>
+                                </button>
+
+                                <div className="space-y-1.5 max-h-48 overflow-y-auto minimal-scrollbar">
+                                  {etiquetas.map(et => {
                                     const activeTags = activeLead.dados_nicho?.etiquetas || [];
                                     const isChecked = activeTags.includes(et.id);
                                     return (
@@ -4661,7 +4718,7 @@ export default function App({ session }) {
                         <div className="bg-slate-50 px-4 py-1.5 border-b border-slate-100 flex items-center gap-1.5 flex-wrap shrink-0">
                           <span className="text-[10px] font-bold text-slate-400">Etiquetas:</span>
                           {(activeLead.dados_nicho?.etiquetas || []).map(tagId => {
-                            const et = DEFAULT_ETIQUETAS.find(e => e.id === tagId);
+                            const et = etiquetas.find(e => e.id === tagId);
                             if (!et) return null;
                             return (
                               <span key={tagId} className={`text-[10px] font-bold px-2 py-0.5 rounded-lg border flex items-center gap-1 ${et.color}`}>
@@ -4955,6 +5012,180 @@ export default function App({ session }) {
                                         onClick={() => {
                                           const filtered = quickReplies.filter(r => r.id !== reply.id);
                                           saveQuickReplies(filtered);
+                                        }}
+                                        className="p-1.5 text-xs text-slate-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors font-bold cursor-pointer"
+                                        title="Excluir"
+                                      >
+                                        🗑️
+                                      </button>
+                                    </div>
+                                  </div>
+                                ))
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Modal de Gerenciamento de Etiquetas (Custom Tags) */}
+                      {showManageEtiquetasModal && (
+                        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fade-in">
+                          <div className="bg-slate-50 border border-slate-200 rounded-3xl shadow-2xl max-w-md w-full p-5 space-y-4 max-h-[90vh] overflow-y-auto minimal-scrollbar">
+                            <div className="flex items-center justify-between border-b border-slate-200 pb-3">
+                              <h3 className="font-extrabold text-sm text-slate-800 flex items-center gap-2">
+                                <span>🏷️ Gerenciar Etiquetas (Tags)</span>
+                              </h3>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setShowManageEtiquetasModal(false);
+                                  setEditingEtiqueta(null);
+                                  setNewEtiquetaName('');
+                                  setNewEtiquetaColorKey('emerald');
+                                }}
+                                className="text-slate-400 hover:text-slate-600 text-sm font-bold p-1 cursor-pointer"
+                              >
+                                ✕
+                              </button>
+                            </div>
+
+                            {/* Formulário de Adicionar / Editar */}
+                            <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs space-y-3">
+                              <h4 className="font-bold text-xs text-indigo-900 flex items-center gap-1.5">
+                                <span>{editingEtiqueta ? '✏️ Editar Etiqueta' : '➕ Criar Nova Etiqueta'}</span>
+                              </h4>
+                              
+                              <div>
+                                <label className="block text-[11px] font-bold text-slate-600 mb-1">Nome da Etiqueta:</label>
+                                <input
+                                  type="text"
+                                  placeholder="Ex: Visita Agendada, Orçamento..."
+                                  value={newEtiquetaName}
+                                  onChange={(e) => setNewEtiquetaName(e.target.value)}
+                                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs outline-none focus:border-indigo-500 font-medium"
+                                />
+                              </div>
+
+                              <div>
+                                <label className="block text-[11px] font-bold text-slate-600 mb-1">Cor da Etiqueta:</label>
+                                <div className="grid grid-cols-5 gap-1.5">
+                                  {ETIQUETA_COLOR_OPTIONS.map((opt) => {
+                                    const isSelected = newEtiquetaColorKey === opt.id;
+                                    return (
+                                      <button
+                                        key={opt.id}
+                                        type="button"
+                                        onClick={() => setNewEtiquetaColorKey(opt.id)}
+                                        className={`p-2 rounded-xl border flex flex-col items-center justify-center gap-1 transition-all cursor-pointer ${opt.color} ${
+                                          isSelected ? 'ring-2 ring-indigo-600 font-extrabold shadow-sm scale-105' : 'opacity-70 hover:opacity-100'
+                                        }`}
+                                        title={opt.label}
+                                      >
+                                        <span className="w-3 h-3 rounded-full shadow-xs" style={{ backgroundColor: opt.dot }} />
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+
+                              <div className="flex items-center gap-2 pt-1">
+                                {editingEtiqueta && (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setEditingEtiqueta(null);
+                                      setNewEtiquetaName('');
+                                      setNewEtiquetaColorKey('emerald');
+                                    }}
+                                    className="px-3 py-2 text-xs font-bold text-slate-500 hover:bg-slate-100 rounded-xl cursor-pointer"
+                                  >
+                                    Cancelar
+                                  </button>
+                                )}
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    if (!newEtiquetaName.trim()) {
+                                      alert('Digite um nome para a etiqueta.');
+                                      return;
+                                    }
+                                    const colorOption = ETIQUETA_COLOR_OPTIONS.find(o => o.id === newEtiquetaColorKey) || ETIQUETA_COLOR_OPTIONS[0];
+
+                                    if (editingEtiqueta) {
+                                      const updated = etiquetas.map(item => item.id === editingEtiqueta.id ? {
+                                        ...item,
+                                        name: newEtiquetaName.trim(),
+                                        color: colorOption.color,
+                                        dot: colorOption.dot,
+                                        badgeColor: colorOption.badgeColor,
+                                        colorKey: colorOption.id
+                                      } : item);
+                                      saveEtiquetas(updated);
+                                      setEditingEtiqueta(null);
+                                    } else {
+                                      const newItem = {
+                                        id: `etq_${Date.now()}`,
+                                        name: newEtiquetaName.trim(),
+                                        color: colorOption.color,
+                                        dot: colorOption.dot,
+                                        badgeColor: colorOption.badgeColor,
+                                        colorKey: colorOption.id
+                                      };
+                                      saveEtiquetas([...etiquetas, newItem]);
+                                    }
+                                    setNewEtiquetaName('');
+                                    setNewEtiquetaColorKey('emerald');
+                                  }}
+                                  className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold py-2 rounded-xl transition-colors cursor-pointer shadow-xs"
+                                >
+                                  {editingEtiqueta ? 'Salvar Alteração' : '➕ Salvar Nova Etiqueta'}
+                                </button>
+                              </div>
+                            </div>
+
+                            {/* Lista de Etiquetas Existentes */}
+                            <div className="space-y-2">
+                              <div className="flex items-center justify-between">
+                                <h4 className="font-bold text-xs text-slate-500">Etiquetas Cadastradas ({etiquetas.length}):</h4>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    if (window.confirm('Deseja restaurar as etiquetas padrão iniciais?')) {
+                                      saveEtiquetas(INITIAL_DEFAULT_ETIQUETAS);
+                                    }
+                                  }}
+                                  className="text-[10px] font-bold text-slate-400 hover:text-slate-600 underline cursor-pointer"
+                                >
+                                  Restaurar Padrão
+                                </button>
+                              </div>
+
+                              {etiquetas.length === 0 ? (
+                                <p className="text-xs text-slate-400 text-center py-4">Nenhuma etiqueta cadastrada.</p>
+                              ) : (
+                                etiquetas.map((et) => (
+                                  <div key={et.id} className="p-2.5 bg-white border border-slate-200 rounded-2xl flex items-center justify-between gap-2 hover:border-slate-300 transition-all">
+                                    <span className={`text-xs font-bold px-2.5 py-1 rounded-lg border ${et.color}`}>
+                                      {et.name}
+                                    </span>
+                                    <div className="flex items-center gap-1 shrink-0">
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setEditingEtiqueta(et);
+                                          setNewEtiquetaName(et.name);
+                                          setNewEtiquetaColorKey(et.colorKey || 'emerald');
+                                        }}
+                                        className="p-1.5 text-xs text-slate-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors font-bold cursor-pointer"
+                                        title="Editar"
+                                      >
+                                        ✏️
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          const filtered = etiquetas.filter(item => item.id !== et.id);
+                                          saveEtiquetas(filtered);
                                         }}
                                         className="p-1.5 text-xs text-slate-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors font-bold cursor-pointer"
                                         title="Excluir"
